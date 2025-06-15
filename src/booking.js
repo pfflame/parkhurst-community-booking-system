@@ -216,67 +216,85 @@ class BookingAutomator {
     }
   }
 
+  async logErrorToFile(errorMessage) {
+    const fs = require('fs').promises;
+    const path = require('path');
+    const logFilePath = path.join(process.cwd(), 'booking_errors.log');
+    const timestamp = new Date().toISOString();
+    const logMessage = `${timestamp} - ${errorMessage}\n`;
+    try {
+      await fs.appendFile(logFilePath, logMessage);
+      log(`Error logged to ${logFilePath}`);
+    } catch (err) {
+      log(`Failed to write to log file: ${err.message}`);
+    }
+  }
+
   async verifyBookingSuccess() {
     log('Verifying booking success...');
-    
-    await delay(3000);
-    
-    const successSelectors = [
-      '.alert-success',
-      '.success-message',
-      '.booking-confirmed',
-      '[class*="success"]'
-    ];
-    
+    // Wait for potential navigation or dynamic content loading after submission.
+    // The confirmation message is transient, so primary check is URL.
+    await delay(5000); // Increased delay to allow for redirect
+
+    const targetSuccessUrl = 'https://parkhurst.skedda.com/booking';
+    const currentUrl = this.page.url();
+
+    // Success is when the URL is *exactly* the target landing page URL, without any query parameters.
+    if (currentUrl === targetSuccessUrl) {
+      log(`Success detected: Navigated to ${currentUrl}`);
+      return true;
+    }
+
+    // If not redirected to the exact success URL, it's considered a failure or an error state.
+    log(`Not redirected to exact success URL. Current URL: ${currentUrl}. Checking for errors or staying on booking form.`);
+
+    const successMessageText = 'Too easy...your booking is in! A confirmation email will hit your inbox shortly.';
     const errorSelectors = [
       '.alert-danger',
       '.error-message',
       '.booking-error',
-      '[class*="error"]'
+      '[class*="error"]',
+      '.alert',
+      '[role="alert"]'
     ];
-    
-    for (const selector of successSelectors) {
-      const element = await this.page.$(selector);
-      if (element) {
-        const text = await element.evaluate(el => el.textContent);
-        log(`Success detected: ${text}`);
-        return true;
-      }
-    }
-    
+
+    let errorMessage = 'Booking failed: Did not redirect to success URL and no specific error message found.';
+    let errorDetected = false;
+
     for (const selector of errorSelectors) {
-      const element = await this.page.$(selector);
-      if (element) {
-        const text = await element.evaluate(el => el.textContent);
-        throw new Error(`Booking failed: ${text}`);
+      const elements = await this.page.$$(selector);
+      for (const element of elements) {
+        try {
+          const isVisible = await element.isIntersectingViewport();
+          if (isVisible) {
+            const text = await element.evaluate(el => el.textContent.trim());
+            // Avoid logging the transient success message as an error if it's styled as an alert
+            if (text && !text.includes(successMessageText)) { 
+              errorMessage = `Booking failed: ${text}`;
+              log(errorMessage);
+              await this.logErrorToFile(errorMessage);
+              errorDetected = true;
+              break;
+            }
+          }
+        } catch (err) {
+          log(`Error while checking selector ${selector}: ${err.message}`);
+        }
       }
+      if (errorDetected) break;
     }
-    
-    const pageContent = await this.page.content();
-    const successKeywords = ['confirmed', 'successful', 'booked', 'reserved'];
-    const errorKeywords = ['error', 'failed', 'invalid', 'unavailable'];
-    
-    const hasSuccess = successKeywords.some(keyword => 
-      pageContent.toLowerCase().includes(keyword)
-    );
-    const hasError = errorKeywords.some(keyword => 
-      pageContent.toLowerCase().includes(keyword)
-    );
-    
-    if (hasError) {
-      throw new Error('Booking appears to have failed based on page content');
+
+    if (errorDetected) {
+      throw new Error(errorMessage);
     }
-    
-    if (hasSuccess) {
-      log('Booking appears successful based on page content');
-      return true;
-    }
-    
-    log('Booking status unclear, but no errors detected');
-    return true;
+
+    // If no specific error message is found, but not on success URL, log current state and throw error.
+    const pageTitle = await this.page.title();
+    const genericError = `Booking status unclear. Not on success URL. Current URL: ${currentUrl}, Page Title: ${pageTitle}`;
+    log(genericError);
+    await this.logErrorToFile(genericError);
+    throw new Error(genericError);
   }
-
-
 
   async close() {
     if (this.browser) {
