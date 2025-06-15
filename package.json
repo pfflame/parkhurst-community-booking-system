@@ -1,0 +1,42 @@
+{
+  "name": "parkhurst-community-booking-system",
+  "version": "1.0.0",
+  "description": "Automated community facility booking system for Parkhurst HOA using Node.js and Puppeteer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "book": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "install-deps": "npm install"
+  },
+  "keywords": [
+    "automation",
+    "booking",
+    "puppeteer",
+    "community",
+    "facility"
+  ],
+  "author": "Eric Zhang",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer": "^22.8.2",
+    "commander": "^11.1.0",
+    "moment": "^2.29.4",
+    "chalk": "^4.1.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/username/parkhurst-community-booking-system.git"
+  },
+  "bugs": {
+    "url": "https://github.com/username/parkhurst-community-booking-system/issues"
+  },
+  "homepage": "https://github.com/username/parkhurst-community-booking-system#readme"
+}
