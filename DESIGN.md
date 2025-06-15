@@ -125,10 +125,13 @@ https://parkhurst.skedda.com/booking?nbend=2025-06-15T13%3A00%3A00&nbspaces=1244
   - Page content analysis for confirmation
 
 ### 5. Verification and Cleanup
-- Success/failure determination
-- Comprehensive error logging for debugging
-- Browser cleanup and resource management
-- Detailed logging throughout process
+- **Success/Failure Determination**: 
+  - Success is confirmed if the page URL is exactly `https://parkhurst.skedda.com/booking` after submission attempts.
+  - Failure is determined if the URL does not match the success URL, or if specific error messages (e.g., from `.alert-danger`, `.error-message`) are detected on the page.
+- **Error Logging**: 
+  - Detailed error messages, including the current URL and page title at the time of failure, are logged to `booking_errors.log` in the project's root directory.
+- **Browser Cleanup**: Puppeteer browser instance is closed.
+- **Process Logging**: Detailed operational logs are maintained throughout the booking process via the `log` utility.
 
 ## Configuration Schema
 
@@ -234,7 +237,7 @@ node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --title "Tenn
 - Form field detection failures
 - Button click failures
 - Modal dialog handling
-- Success/failure determination
+- **Success/Failure Determination**: Verification is primarily based on the final URL. A successful booking redirects to the base booking URL (`https://parkhurst.skedda.com/booking`) without any query parameters. If the URL contains query parameters or if specific error messages are found on the page, the booking is considered failed. All errors are logged to `booking_errors.log`.
 
 ### 5. Recovery Mechanisms
 - Multiple selector strategies

@@ -11,7 +11,7 @@ An automated facility booking system for Parkhurst HOA using Node.js and Puppete
 - 🖥️ **CLI Interface**: Simple command-line interface with helpful examples
 - 🔒 **Secure**: Supports environment variables for sensitive credentials
 - 📸 **Debug Mode**: Visual browser mode for troubleshooting
-- ✅ **Robust Error Handling**: Comprehensive error detection and reporting
+- ✅ **Robust Error Handling**: Comprehensive error detection, URL-based success verification, and detailed logging to `booking_errors.log`
 - 🎯 **Enhanced Button Detection**: Multiple selector strategies for reliable automation
 - 🔄 **Modal Dialog Handling**: Automatic detection and interaction with confirmation dialogs
 
@@ -292,7 +292,10 @@ node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --headless fa
 
 ### Error Handling
 
-The system provides comprehensive error logging with detailed information about failures, including page URLs and titles when errors occur.
+The system provides comprehensive error logging with detailed information about failures. 
+- Success is determined by redirection to the exact `https://parkhurst.skedda.com/booking` URL.
+- If not redirected, or if specific error messages are found on the page, the booking is considered failed.
+- All errors, including page URL and title at the time of failure, are logged to `booking_errors.log` in the project root.
 
 ### Logs
 
@@ -314,7 +317,7 @@ The system provides detailed logging with timestamps:
 
 - **Enhanced Button Detection**: Multiple selector strategies for reliable button clicking
 - **Modal Dialog Handling**: Automatic detection and interaction with confirmation dialogs
-- **Robust Error Detection**: Comprehensive success/failure verification
+- **Robust Error Detection**: URL-based success verification (exact match to base booking URL) and detailed error message scraping. Failures and errors are logged to `booking_errors.log`.
 - **Smart Form Filling**: Multiple selector strategies for form fields
 - **Retry Mechanisms**: Multiple click methods for improved reliability
 - **Clean Architecture**: Modular design with separation of concerns

@@ -166,8 +166,8 @@ class BookingAutomator {
       await confirmButton.evaluate(el => el.click());
     }
     
-    await delay(2000);
     await this.handlePostSubmissionDialogs();
+    // verifyBookingSuccess includes its own delay to wait for redirects or messages.
     await this.verifyBookingSuccess();
   }
 
@@ -233,33 +233,34 @@ class BookingAutomator {
   async verifyBookingSuccess() {
     log('Verifying booking success...');
     // Wait for potential navigation or dynamic content loading after submission.
-    // The confirmation message is transient, so primary check is URL.
-    await delay(5000); // Increased delay to allow for redirect
+    // The primary success indicator is redirection to the base booking URL without query parameters.
+    await delay(5000); // Wait for redirects or for error messages to appear.
 
     const targetSuccessUrl = 'https://parkhurst.skedda.com/booking';
     const currentUrl = this.page.url();
 
-    // Success is when the URL is *exactly* the target landing page URL, without any query parameters.
+    // Check 1: Exact URL match for success.
+    // If the current URL is exactly the target success URL, the booking was successful.
     if (currentUrl === targetSuccessUrl) {
-      log(`Success detected: Navigated to ${currentUrl}`);
+      log(`Success: Navigated to the target success URL: ${currentUrl}`);
       return true;
     }
 
     // If not redirected to the exact success URL, it's considered a failure or an error state.
-    log(`Not redirected to exact success URL. Current URL: ${currentUrl}. Checking for errors or staying on booking form.`);
+    // Log this intermediate state before checking for specific error messages.
+    log(`URL check failed: Not redirected to exact success URL. Current URL: ${currentUrl}. Proceeding to check for error messages.`);
 
-    const successMessageText = 'Too easy...your booking is in! A confirmation email will hit your inbox shortly.';
+    // Check 2: Look for specific error messages on the page.
     const errorSelectors = [
-      '.alert-danger',
-      '.error-message',
-      '.booking-error',
-      '[class*="error"]',
-      '.alert',
-      '[role="alert"]'
+      '.alert-danger',      // Bootstrap danger alert
+      '.error-message',     // Common class for error messages
+      '.booking-error',     // Custom or specific booking error class
+      '[class*="error"]',   // Elements with 'error' in their class name
+      '.alert',             // General alert (could be info/warning, but check content)
+      '[role="alert"]'      // ARIA role for alerts
     ];
 
-    let errorMessage = 'Booking failed: Did not redirect to success URL and no specific error message found.';
-    let errorDetected = false;
+    let detectedErrorMessage = '';
 
     for (const selector of errorSelectors) {
       const elements = await this.page.$$(selector);
@@ -268,32 +269,29 @@ class BookingAutomator {
           const isVisible = await element.isIntersectingViewport();
           if (isVisible) {
             const text = await element.evaluate(el => el.textContent.trim());
-            // Avoid logging the transient success message as an error if it's styled as an alert
-            if (text && !text.includes(successMessageText)) { 
-              errorMessage = `Booking failed: ${text}`;
-              log(errorMessage);
-              await this.logErrorToFile(errorMessage);
-              errorDetected = true;
-              break;
+            if (text) { // If any visible error-like element has text, consider it an error.
+              detectedErrorMessage = `Booking failed. Detected error message: "${text}"`;
+              log(detectedErrorMessage);
+              await this.logErrorToFile(detectedErrorMessage);
+              throw new Error(detectedErrorMessage); // Throw immediately once a specific error is found and logged.
             }
           }
         } catch (err) {
-          log(`Error while checking selector ${selector}: ${err.message}`);
+          // If the error is the one we just threw, rethrow it. Otherwise, log the checking error.
+          if (err.message.startsWith('Booking failed. Detected error message:')) {
+            throw err;
+          }
+          log(`Error while checking selector ${selector} for error messages: ${err.message}`);
         }
       }
-      if (errorDetected) break;
     }
 
-    if (errorDetected) {
-      throw new Error(errorMessage);
-    }
-
-    // If no specific error message is found, but not on success URL, log current state and throw error.
+    // Check 3: If no specific error message is found, but not on success URL, log current state as a generic failure.
     const pageTitle = await this.page.title();
-    const genericError = `Booking status unclear. Not on success URL. Current URL: ${currentUrl}, Page Title: ${pageTitle}`;
-    log(genericError);
-    await this.logErrorToFile(genericError);
-    throw new Error(genericError);
+    const genericFailureMessage = `Booking failed: Did not redirect to success URL (${targetSuccessUrl}) and no specific error messages were found. Current URL: ${currentUrl}, Page Title: "${pageTitle}"`;
+    log(genericFailureMessage);
+    await this.logErrorToFile(genericFailureMessage);
+    throw new Error(genericFailureMessage);
   }
 
   async close() {
