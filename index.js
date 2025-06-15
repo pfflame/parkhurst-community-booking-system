@@ -17,11 +17,11 @@ program
 program
   .command('book')
     .description('Book a facility')
-    .requiredOption('-f, --facility <facility>', 'Facility to book (e.g., tennis_lower)')
-    .option('-d, --date <date>', 'Booking date (YYYY-MM-DD)')
-    .option('--book-in-advance-days [days]', 'Number of days in advance to book (e.g., 15 for 15 days from today). If no value is provided, defaults to value in config or 15. Mutually exclusive with --date.')
-    .requiredOption('-s, --start <time>', 'Start time (HH:MM)')
-    .requiredOption('-e, --end <time>', 'End time (HH:MM)')
+    .requiredOption('--facility <facility>', 'Facility to book (e.g., tennis_lower)')
+    .option('--date <date>', 'Booking date (YYYY-MM-DD)')
+    .option('--book-in-advance [days]', 'Number of days in advance to book (e.g., 15 for 15 days from today). If no value is provided, defaults to value in config or 15. Mutually exclusive with --date.')
+    .requiredOption('--start-time <time>', 'Start time (HH:MM)')
+    .requiredOption('--end-time <time>', 'End time (HH:MM)')
     .option('--profile <email_or_name>', 'User profile for credentials (email or name from config)')
     .option('--signature <signature>', 'Custom signature (overrides config)')
     .option('--title <title>', 'Custom booking title (overrides auto-generation)')
@@ -40,7 +40,7 @@ program
 program
   .command('list')
   .description('List available facilities')
-  .option('-c, --config <path>', 'Custom config file path')
+  .option('--config <path>', 'Custom config file path')
   .action(async (options) => {
     try {
       const config = loadConfig(options.config);
@@ -67,7 +67,7 @@ program
 program
   .command('validate')
   .description('Validate configuration file')
-  .option('-c, --config <path>', 'Custom config file path')
+  .option('--config <path>', 'Custom config file path')
   .action(async (options) => {
     try {
       const config = loadConfig(options.config);
@@ -91,25 +91,25 @@ program
     console.log(chalk.gray('─'.repeat(50)));
     
     console.log(chalk.yellow('\n1. Basic booking:'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00'));
     
     console.log(chalk.yellow('\n2. Book with different profile (email):'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --profile "john.doe@example.com"'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "john.doe@example.com"'));
     
     console.log(chalk.yellow('\n3. Book with custom signature:'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --signature "JD"'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --signature "JD"'));
     
     console.log(chalk.yellow('\n4. Book with profile and signature:'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --profile "jane.smith@example.com" --signature "JS"'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "jane.smith@example.com" --signature "JS"'));
     
     console.log(chalk.yellow('\n5. Book with custom title:'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --title "Tennis Practice"'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --title "Tennis Practice"'));
     
     console.log(chalk.yellow('\n6. Complete example with all parameters:'));
-    console.log(chalk.white('   node index.js book -f tennis_upper -d 2025-06-15 -s 14:00 -e 16:00 --profile "jane.smith@company.org" --signature "JS" --title "Tournament Practice"'));
+    console.log(chalk.white('   node index.js book --facility tennis_upper --date 2025-06-15 --start-time 14:00 --end-time 16:00 --profile "jane.smith@company.org" --signature "JS" --title "Tournament Practice"'));
     
     console.log(chalk.yellow('\n7. Run in non-headless mode (for debugging):'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --headless false'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --headless false'));
     
     console.log(chalk.yellow('\n8. List available facilities:'));
     console.log(chalk.white('   node index.js list'));
@@ -117,13 +117,19 @@ program
     console.log(chalk.yellow('\n9. Validate configuration:'));
     console.log(chalk.white('   node index.js validate'));
     
+    console.log(chalk.yellow('\n8. Book in advance (using default days from config):'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --book-in-advance --start-time 12:00 --end-time 13:00'));
+    
+    console.log(chalk.yellow('\n9. Book specific days in advance:'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --book-in-advance 10 --start-time 12:00 --end-time 13:00'));
+    
     console.log(chalk.yellow('\n📋 Profile and Signature Examples:'));
     console.log(chalk.white('   # Use a specific profile (requires PROFILE_JOHN_DOE_EXAMPLE_COM_PASSWORD in .env)'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 14:00 -e 15:00 --profile "john.doe@example.com"'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --profile "john.doe@example.com"'));
     console.log(chalk.white('   # Override signature for any profile'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 14:00 -e 15:00 --signature "JS"'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --signature "JS"'));
     console.log(chalk.white('   # Use profile with signature override'));
-    console.log(chalk.white('   node index.js book -f tennis_lower -d 2025-06-15 -s 14:00 -e 15:00 --profile "jane.smith@company.org" --signature "JS"'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --profile "jane.smith@company.org" --signature "JS"'));
     
     console.log(chalk.blue('\n💡 Tips:'));
     console.log(chalk.gray('   • Use --headless false for debugging'));
@@ -136,7 +142,7 @@ program
     console.log();
   });
 
-function validateBookingParams(options, forceDate = false, config) { // Added config parameter
+function validateBookingParams(options, forceDate = false, config) {
   const errors = [];
   
   // Date validation (format, past date) is now handled in executeBooking before this function is called.
@@ -151,16 +157,16 @@ function validateBookingParams(options, forceDate = false, config) { // Added co
       errors.push(`Facility '${options.facility || ''}' not found or not specified. Use 'list' command to see available facilities.`);
   }
   
-  if (!isValidTime(options.start)) {
+  if (!isValidTime(options.startTime)) {
     errors.push('Invalid start time format. Use HH:MM');
   }
   
-  if (!isValidTime(options.end)) {
+  if (!isValidTime(options.endTime)) {
     errors.push('Invalid end time format. Use HH:MM');
   }
   
-  if (isValidTime(options.start) && isValidTime(options.end)) {
-    if (!isValidTimeRange(options.start, options.end)) {
+  if (isValidTime(options.startTime) && isValidTime(options.endTime)) {
+    if (!isValidTimeRange(options.startTime, options.endTime)) {
       errors.push('Start time must be before end time');
     }
   }
@@ -181,22 +187,22 @@ async function executeBooking(options) {
   const defaultAdvanceDaysFromConfig = config.defaults?.bookInAdvanceDays;
   const hardcodedDefaultAdvanceDays = 15;
 
-  if (options.date && options.bookInAdvanceDays !== undefined) {
-    console.error(chalk.red('Error: --date and --book-in-advance-days are mutually exclusive. Please use one or the other.'));
+  if (options.date && options.bookInAdvance !== undefined) {
+    console.error(chalk.red('Error: --date and --book-in-advance are mutually exclusive. Please use one or the other.'));
     process.exit(1);
   }
 
   let calculatedDate; // This will be a Date object
 
-  if (options.bookInAdvanceDays !== undefined) {
+  if (options.bookInAdvance !== undefined) {
     let daysToAdvance;
-    if (typeof options.bookInAdvanceDays === 'string') {
-      daysToAdvance = parseInt(options.bookInAdvanceDays, 10);
+    if (typeof options.bookInAdvance === 'string') {
+      daysToAdvance = parseInt(options.bookInAdvance, 10);
       if (isNaN(daysToAdvance) || daysToAdvance < 0) {
-        console.error(chalk.red('Error: --book-in-advance-days must be a non-negative integer if a value is provided.'));
+        console.error(chalk.red('Error: --book-in-advance must be a non-negative integer if a value is provided.'));
         process.exit(1);
       }
-    } else { // options.bookInAdvanceDays is true (flag used without value)
+    } else { // options.bookInAdvance is true (flag used without value)
       daysToAdvance = typeof defaultAdvanceDaysFromConfig === 'number' ? defaultAdvanceDaysFromConfig : hardcodedDefaultAdvanceDays;
       log(chalk.blue(`Using default days in advance: ${daysToAdvance} (from ${typeof defaultAdvanceDaysFromConfig === 'number' ? 'config' : 'hardcoded default'})`));
     }
@@ -214,7 +220,7 @@ async function executeBooking(options) {
         process.exit(1);
     }
   } else {
-    // Neither --date nor --book-in-advance-days provided, use default
+    // Neither --date nor --book-in-advance provided, use default
     const daysToAdvance = typeof defaultAdvanceDaysFromConfig === 'number' ? defaultAdvanceDaysFromConfig : hardcodedDefaultAdvanceDays;
     log(chalk.blue(`Neither --date nor --book-in-advance specified. Using default days in advance: ${daysToAdvance} (from ${typeof defaultAdvanceDaysFromConfig === 'number' ? 'config' : 'hardcoded default'})`));
     calculatedDate = new Date(today);
@@ -254,8 +260,8 @@ async function executeBooking(options) {
   console.log(chalk.blue('\n🎯 Booking Summary:'));
   console.log(chalk.gray('─'.repeat(30)));
   console.log(chalk.white(`📧 Email: ${config.credentials.email}`));
-  console.log(chalk.white(`📅 Date: ${options.date}${options.bookInAdvanceDays ? ` (calculated from ${options.bookInAdvanceDays} days in advance)` : ''}`));
-  console.log(chalk.white(`⏰ Time: ${options.start} - ${options.end}`));
+  console.log(chalk.white(`📅 Date: ${options.date}${options.bookInAdvance ? ` (calculated from ${options.bookInAdvance} days in advance)` : ''}`));
+  console.log(chalk.white(`⏰ Time: ${options.startTime} - ${options.endTime}`));
   console.log(chalk.white(`🏢 Facility: ${facility.name}`));
   console.log(chalk.white(`✍️  Signature: ${config.defaults.signature}`));
   console.log(chalk.white(`🤖 Headless: ${headless ? 'Yes' : 'No'}`));
@@ -271,8 +277,8 @@ async function executeBooking(options) {
   await automator.book({
     facility,
     date: options.date,
-    startTime: options.start,
-    endTime: options.end,
+    startTime: options.startTime,
+    endTime: options.endTime,
     signature: config.defaults.signature,
     customTitle: options.title,
     headless

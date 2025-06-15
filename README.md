@@ -59,17 +59,17 @@ An automated facility booking system for Parkhurst HOA using Node.js and Puppete
 
 #### `book` - Make a booking
 ```bash
-node index.js book -f <facility_id> -d <date> -s <start_time> -e <end_time> [options]
+node index.js book --facility <facility_id> --date <date> --start-time <start_time> --end-time <end_time> [options]
 ```
 
-The script will attempt to book the specified facility. The date can be provided directly with `-d, --date` or calculated using `--book-in-advance-days`.
+The script will attempt to book the specified facility. The date can be provided directly with `--date` or calculated using `--book-in-advance`.
 
 **Required Parameters:**
-- `-f, --facility <facility_id>` - Facility ID to book (e.g., tennis_lower)
-- `-d, --date <date>` - Booking date (YYYY-MM-DD). Mutually exclusive with `--book-in-advance-days`.
-- `--book-in-advance-days <days>` - Number of days in advance to book (e.g., `15` for 15 days from today). Mutually exclusive with `-d, --date`.
-- `-s, --start <time>` - Start time (HH:MM)
-- `-e, --end <time>` - End time (HH:MM)
+- `--facility <facility_id>` - Facility ID to book (e.g., tennis_lower)
+- `--date <date>` - Booking date (YYYY-MM-DD). Mutually exclusive with `--book-in-advance`.
+- `--book-in-advance [days]` - Number of days in advance to book (e.g., `15` for 15 days from today). If no value is provided, defaults to config value or 15. Mutually exclusive with `--date`.
+- `--start-time <time>` - Start time (HH:MM)
+- `--end-time <time>` - End time (HH:MM)
 
 **Optional Parameters:**
 - `--profile <email_or_name>` - User profile for credentials (email or name from config)
@@ -95,41 +95,44 @@ node index.js validate
 node index.js examples
 ```
 
-### Basic Booking
+### Basic Booking Examples
 
 ```bash
-node index.js book -f tennis_lower -d 2025-06-20 -s 10:00 -e 11:00
-```
+# Book for a specific date
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00
 
-### Booking a Specific Number of Days in Advance
+# Book 15 days in advance (using default from config)
+node index.js book --facility tennis_lower --book-in-advance --start-time 12:00 --end-time 13:00
 
-To book 10 days from today:
-```bash
-node index.js book -f tennis_lower --book-in-advance-days 10 -s 10:00 -e 11:00
-```
-
-If `--book-in-advance-days` is used without a value, the script will use the default number of days specified in `config.json` (in `defaults.bookInAdvanceDays`, which is 15 by default in the example configuration). If this default is not found in the configuration, it will fall back to a hardcoded 15 days.
-
-### Basic Booking (Original Example)
-
-```bash
-# Basic booking
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00
+# Book 10 days in advance
+node index.js book --facility tennis_lower --book-in-advance 10 --start-time 12:00 --end-time 13:00
 
 # Book with different profile (email or name)
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --profile "john.doe@example.com"
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "john.doe@example.com"
 
 # Book with custom signature
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --signature "JD"
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --signature "JD"
 
 # Book with both profile and signature
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --profile "jane.smith@example.com" --signature "JS"
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "jane.smith@example.com" --signature "JS"
 
 # Book with custom title
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --title "Tennis Practice"
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --title "Tennis Practice"
 
 # Complete example with ALL parameters
-node index.js book -f tennis_upper -d 2025-06-15 -s 12:00 -e 13:00 --profile "jane.smith@company.org" --signature "JS" --title "Tournament Practice" --headless false --config "/path/to/custom/config.json"
+node index.js book --facility tennis_upper --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "jane.smith@company.org" --signature "JS" --title "Tournament Practice" --headless false --config "/path/to/custom/config.json"
+```
+
+### Booking in Advance
+
+If `--book-in-advance` is used without a value, the script will use the default number of days specified in `config.json` (in `defaults.bookInAdvanceDays`, which is 15 by default in the example configuration). If this default is not found in the configuration, it will fall back to a hardcoded 15 days.
+
+```bash
+# Use default advance booking days from config
+node index.js book --facility tennis_lower --book-in-advance --start-time 10:00 --end-time 11:00
+
+# Book specific number of days in advance
+node index.js book --facility tennis_lower --book-in-advance 10 --start-time 10:00 --end-time 11:00
 ```
 
 ### Advanced Usage
@@ -140,10 +143,10 @@ The system supports multiple user profiles stored in environment variables. Each
 Use the `--profile` parameter to book with different email addresses without changing your config file:
 ```bash
 # Book for a family member
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --profile "spouse@example.com"
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "spouse@example.com"
 
 # Book for a friend (if authorized)
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --profile "friend@example.com" --signature "FR"
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "friend@example.com" --signature "FR"
 ```
 
 **Setting up profiles in .env:**
@@ -161,12 +164,12 @@ PROFILE_JANE_SMITH_COMPANY_ORG_SIGNATURE=JS
 
 #### Debug Mode (Non-headless)
 ```bash
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --headless false
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --headless false
 ```
 
 #### Custom Config File
 ```bash
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --config /path/to/config.json
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --config /path/to/config.json
 ```
 
 ## Configuration
@@ -306,7 +309,7 @@ parkhurst-community-booking-system/
 
 Run with `--headless false` to see the browser in action:
 ```bash
-node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --headless false
+node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --headless false
 ```
 
 ### Error Handling

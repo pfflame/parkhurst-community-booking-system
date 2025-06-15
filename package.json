@@ -4,9 +4,12 @@
   "description": "Automated community facility booking system for Parkhurst HOA using Node.js and Puppeteer",
   "main": "index.js",
   "scripts": {
+    "test": "node index.js validate && node index.js list",
     "start": "node index.js",
+    "validate": "node index.js validate",
+    "list": "node index.js list",
+    "examples": "node index.js examples",
     "book": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
     "install-deps": "npm install"
   },
   "keywords": [
