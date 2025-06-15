@@ -170,16 +170,19 @@ https://parkhurst.skedda.com/booking?nbend=2025-06-15T13%3A00%3A00&nbspaces=1244
 
 #### `book` - Primary booking command
 **Required Parameters:**
-- `-f, --facility <facility>`: Facility key from configuration
-- `-d, --date <date>`: Booking date (YYYY-MM-DD)
+- `-f, --facility <facility_id>`: Facility ID from configuration (e.g., tennis_lower)
+- `-d, --date <date>`: Specifies the booking date in YYYY-MM-DD format. This is mutually exclusive with `--book-in-advance-days`.
+- `--book-in-advance-days <days>`: An optional integer specifying how many days in the future the booking should be made. For example, `15` means 15 days from the current date. If this option is provided, `-d, --date` should not be used. If neither `-d, --date` nor `--book-in-advance-days` is specified, the script will use the default number of days specified in `config.json` (`defaults.bookInAdvanceDays`); if this is not set in the config, it defaults to 15 days in advance.
 - `-s, --start <time>`: Start time (HH:MM)
 - `-e, --end <time>`: End time (HH:MM)
 
 **Optional Parameters:**
+- `--profile <email_or_name>`: User profile for credentials (email or name from config)
 - `--signature <signature>`: Custom signature (overrides config default)
 - `--title <title>`: Custom booking title (overrides auto-generation)
 - `--headless <boolean>`: Run in headless mode (default: true)
 - `--config <path>`: Custom config file path
+- `--force-date`: Allow booking dates in the past (for testing or specific scenarios)
 
 
 #### `list` - Facility listing
@@ -215,10 +218,10 @@ node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --title "Tenn
 ## Error Handling Strategy
 
 ### 1. Input Validation
-- Date format validation (YYYY-MM-DD)
+- Date (`YYYY-MM-DD`): Can be directly provided or calculated based on `book-in-advance-days`.
 - Time format validation (HH:MM)
 - Time range validation (start before end)
-- Future date validation (no past bookings)
+The `date` parameter (whether provided directly or calculated) is validated for the correct `YYYY-MM-DD` format. It's also checked to ensure it's not a past date, unless `--force-date` is used.
 - Facility existence validation
 
 ### 2. Network and Browser Issues

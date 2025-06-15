@@ -59,21 +59,25 @@ An automated facility booking system for Parkhurst HOA using Node.js and Puppete
 
 #### `book` - Make a booking
 ```bash
-node index.js book -f <facility> -d <date> -s <start> -e <end> [options]
+node index.js book -f <facility_id> -d <date> -s <start_time> -e <end_time> [options]
 ```
 
+The script will attempt to book the specified facility. The date can be provided directly with `-d, --date` or calculated using `--book-in-advance-days`.
+
 **Required Parameters:**
-- `-f, --facility <facility>` - Facility to book (e.g., tennis_lower)
-- `-d, --date <date>` - Booking date (YYYY-MM-DD)
+- `-f, --facility <facility_id>` - Facility ID to book (e.g., tennis_lower)
+- `-d, --date <date>` - Booking date (YYYY-MM-DD). Mutually exclusive with `--book-in-advance-days`.
+- `--book-in-advance-days <days>` - Number of days in advance to book (e.g., `15` for 15 days from today). Mutually exclusive with `-d, --date`.
 - `-s, --start <time>` - Start time (HH:MM)
 - `-e, --end <time>` - End time (HH:MM)
 
 **Optional Parameters:**
-- `-p, --profile <email>` - Email address for booking (overrides config)
-- `-sig, --signature <signature>` - Custom signature (overrides config)
-- `-t, --title <title>` - Custom booking title (overrides auto-generation)
+- `--profile <email_or_name>` - User profile for credentials (email or name from config)
+- `--signature <signature>` - Custom signature (overrides config)
+- `--title <title>` - Custom booking title (overrides auto-generation)
 - `--headless <boolean>` - Run in headless mode (default: true)
-- `-c, --config <path>` - Custom config file path
+- `--config <path>` - Custom config file path
+- `--force-date` - (Optional) Allow using `--date` even if it specifies a past date. Useful for testing. Use with caution.
 
 
 #### `list` - List available facilities
@@ -91,13 +95,28 @@ node index.js validate
 node index.js examples
 ```
 
-### Basic Usage
+### Basic Booking
+
+```bash
+node index.js book -f tennis_lower -d 2025-06-20 -s 10:00 -e 11:00
+```
+
+### Booking a Specific Number of Days in Advance
+
+To book 10 days from today:
+```bash
+node index.js book -f tennis_lower --book-in-advance-days 10 -s 10:00 -e 11:00
+```
+
+If `--book-in-advance-days` is used without a value, the script will use the default number of days specified in `config.json` (in `defaults.bookInAdvanceDays`, which is 15 by default in the example configuration). If this default is not found in the configuration, it will fall back to a hardcoded 15 days.
+
+### Basic Booking (Original Example)
 
 ```bash
 # Basic booking
 node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00
 
-# Book with different profile (email)
+# Book with different profile (email or name)
 node index.js book -f tennis_lower -d 2025-06-15 -s 12:00 -e 13:00 --profile "john.doe@example.com"
 
 # Book with custom signature

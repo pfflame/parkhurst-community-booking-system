@@ -16,16 +16,18 @@ program
 
 program
   .command('book')
-  .description('Book a community facility')
-  .requiredOption('-f, --facility <facility>', 'Facility to book (e.g., tennis_lower)')
-  .requiredOption('-d, --date <date>', 'Booking date (YYYY-MM-DD)')
-  .requiredOption('-s, --start <time>', 'Start time (HH:MM)')
-  .requiredOption('-e, --end <time>', 'End time (HH:MM)')
-  .option('-p, --profile <email>', 'Email address for booking (overrides config)')
-  .option('-sig, --signature <signature>', 'Custom signature (overrides config)')
-  .option('-t, --title <title>', 'Custom booking title (overrides auto-generation)')
-  .option('--headless <boolean>', 'Run in headless mode', 'true')
-  .option('-c, --config <path>', 'Custom config file path')
+    .description('Book a facility')
+    .requiredOption('-f, --facility <facility>', 'Facility to book (e.g., tennis_lower)')
+    .option('-d, --date <date>', 'Booking date (YYYY-MM-DD)')
+    .option('--book-in-advance-days [days]', 'Number of days in advance to book (e.g., 15 for 15 days from today). If no value is provided, defaults to value in config or 15. Mutually exclusive with --date.')
+    .requiredOption('-s, --start <time>', 'Start time (HH:MM)')
+    .requiredOption('-e, --end <time>', 'End time (HH:MM)')
+    .option('--profile <email_or_name>', 'User profile for credentials (email or name from config)')
+    .option('--signature <signature>', 'Custom signature (overrides config)')
+    .option('--title <title>', 'Custom booking title (overrides auto-generation)')
+    .option('--headless <boolean>', 'Run in headless mode', 'true')
+    .option('--config <path>', 'Path to custom config file')
+    .option('--force-date', 'Allow booking dates in the past (for testing or specific scenarios)')
   .action(async (options) => {
     try {
       await executeBooking(options);
@@ -134,13 +136,19 @@ program
     console.log();
   });
 
-function validateBookingParams(options) {
+function validateBookingParams(options, forceDate = false, config) { // Added config parameter
   const errors = [];
   
-  if (!isValidDate(options.date)) {
-    errors.push('Invalid date format. Use YYYY-MM-DD');
-  } else if (!isValidBookingDate(options.date)) {
-    errors.push('Booking date cannot be in the past');
+  // Date validation (format, past date) is now handled in executeBooking before this function is called.
+  // options.date should be populated and validated by the time we get here.
+  if (!options.date || !isValidDate(options.date)) {
+    // This should ideally not be hit if executeBooking's date logic is correct.
+    errors.push('Booking date is missing or invalid after initial processing. This indicates an internal logic error.');
+  }
+
+  // Facility validation
+  if (!options.facility || !getFacility(config, options.facility)) {
+      errors.push(`Facility '${options.facility || ''}' not found or not specified. Use 'list' command to see available facilities.`);
   }
   
   if (!isValidTime(options.start)) {
@@ -163,6 +171,66 @@ function validateBookingParams(options) {
 }
 
 async function executeBooking(options) {
+  const config = loadConfig(options.config, options.profile);
+  validateConfig(config);
+
+  let bookingDateStr;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Normalize today to start of day
+
+  const defaultAdvanceDaysFromConfig = config.defaults?.bookInAdvanceDays;
+  const hardcodedDefaultAdvanceDays = 15;
+
+  if (options.date && options.bookInAdvanceDays !== undefined) {
+    console.error(chalk.red('Error: --date and --book-in-advance-days are mutually exclusive. Please use one or the other.'));
+    process.exit(1);
+  }
+
+  let calculatedDate; // This will be a Date object
+
+  if (options.bookInAdvanceDays !== undefined) {
+    let daysToAdvance;
+    if (typeof options.bookInAdvanceDays === 'string') {
+      daysToAdvance = parseInt(options.bookInAdvanceDays, 10);
+      if (isNaN(daysToAdvance) || daysToAdvance < 0) {
+        console.error(chalk.red('Error: --book-in-advance-days must be a non-negative integer if a value is provided.'));
+        process.exit(1);
+      }
+    } else { // options.bookInAdvanceDays is true (flag used without value)
+      daysToAdvance = typeof defaultAdvanceDaysFromConfig === 'number' ? defaultAdvanceDaysFromConfig : hardcodedDefaultAdvanceDays;
+      log(chalk.blue(`Using default days in advance: ${daysToAdvance} (from ${typeof defaultAdvanceDaysFromConfig === 'number' ? 'config' : 'hardcoded default'})`));
+    }
+    calculatedDate = new Date(today);
+    calculatedDate.setDate(today.getDate() + daysToAdvance);
+  } else if (options.date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(options.date)) {
+        console.error(chalk.red('Error: Date format for --date must be YYYY-MM-DD.'));
+        process.exit(1);
+    }
+    const parts = options.date.split('-');
+    calculatedDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    if (isNaN(calculatedDate.getTime())) {
+        console.error(chalk.red(`Error: Invalid date provided: ${options.date}`));
+        process.exit(1);
+    }
+  } else {
+    // Neither --date nor --book-in-advance-days provided, use default
+    const daysToAdvance = typeof defaultAdvanceDaysFromConfig === 'number' ? defaultAdvanceDaysFromConfig : hardcodedDefaultAdvanceDays;
+    log(chalk.blue(`Neither --date nor --book-in-advance specified. Using default days in advance: ${daysToAdvance} (from ${typeof defaultAdvanceDaysFromConfig === 'number' ? 'config' : 'hardcoded default'})`));
+    calculatedDate = new Date(today);
+    calculatedDate.setDate(today.getDate() + daysToAdvance);
+  }
+
+  if (!options.forceDate && calculatedDate < today) {
+    console.error(chalk.red(`Error: Booking date ${calculatedDate.toISOString().split('T')[0]} is in the past. Use --force-date to override.`));
+    process.exit(1);
+  }
+
+  bookingDateStr = calculatedDate.toISOString().split('T')[0];
+  options.date = bookingDateStr; // Update options.date to be used by the rest of the function
+
+  // The rest of executeBooking continues from here, using options.date (which is now bookingDateStr)
+  // and config (which is already loaded).
   // Validate email format if profile is provided
   if (options.profile) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -170,11 +238,10 @@ async function executeBooking(options) {
       throw new Error('Invalid email format for profile');
     }
   }
-  
-  // Load configuration with profile support
-  const config = loadConfig(options.config, options.profile);
-  validateConfig(config);
-  validateBookingParams(options);
+
+  // Basic parameter validation (facility, times) - date is validated above.
+  validateBookingParams(options, options.forceDate, config); // Pass config for facility check
+
   
   // Override signature if provided (takes precedence over profile signature)
   if (options.signature) {
@@ -187,7 +254,7 @@ async function executeBooking(options) {
   console.log(chalk.blue('\n🎯 Booking Summary:'));
   console.log(chalk.gray('─'.repeat(30)));
   console.log(chalk.white(`📧 Email: ${config.credentials.email}`));
-  console.log(chalk.white(`📅 Date: ${options.date}`));
+  console.log(chalk.white(`📅 Date: ${options.date}${options.bookInAdvanceDays ? ` (calculated from ${options.bookInAdvanceDays} days in advance)` : ''}`));
   console.log(chalk.white(`⏰ Time: ${options.start} - ${options.end}`));
   console.log(chalk.white(`🏢 Facility: ${facility.name}`));
   console.log(chalk.white(`✍️  Signature: ${config.defaults.signature}`));

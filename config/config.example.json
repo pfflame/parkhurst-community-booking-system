@@ -1,0 +1,27 @@
+{
+  "credentials": {
+    "email": "your-email@example.com",
+    "password": "your-password"
+  },
+  "defaults": {
+    "signature": "ZZ",
+    "bufferMinutes": 15,
+    "headless": true,
+    "bookInAdvanceDays": 15,
+    "timeout": 30000
+  },
+  "facilities": {
+    "tennis_lower": {
+      "spaceId": "1244466",
+      "name": "Tennis - Lower Court Whole"
+    },
+    "tennis_upper": {
+      "spaceId": "1244467",
+      "name": "Tennis - Upper Court Whole"
+    }
+  },
+  "urls": {
+    "baseUrl": "https://parkhurst.skedda.com/booking",
+    "loginUrl": "https://parkhurst.skedda.com/login"
+  }
+}

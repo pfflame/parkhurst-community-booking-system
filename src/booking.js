@@ -304,7 +304,7 @@ class BookingAutomator {
   async book(options) {
     const {
       facility,
-      date,
+      date, // Date is expected in YYYY-MM-DD format, already calculated if --book-in-advance-days was used.
       startTime,
       endTime,
       signature = this.config.defaults.signature,

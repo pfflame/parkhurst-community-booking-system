@@ -81,6 +81,14 @@ function loadConfig(configPath = null, profileEmail = null) {
  * Validates configuration object
  */
 function validateConfig(config) {
+  if (!config.defaults) {
+    throw new Error('Missing defaults section in config');
+  }
+  if (config.defaults.bookInAdvanceDays !== undefined && 
+      (typeof config.defaults.bookInAdvanceDays !== 'number' || config.defaults.bookInAdvanceDays < 0)) {
+    throw new Error('config.defaults.bookInAdvanceDays must be a non-negative number if provided');
+  }
+
   if (!config.credentials) {
     throw new Error('Missing credentials section in config');
   }
@@ -162,6 +170,7 @@ function createSampleConfig(outputPath) {
       signature: "ZZ",
       bufferMinutes: 15,
       headless: true,
+      bookInAdvanceDays: 15, // Default days to book in advance
       timeout: 30000
     },
     facilities: {
