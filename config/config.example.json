@@ -7,7 +7,7 @@
     "signature": "ZZ",
     "bufferMinutes": 15,
     "headless": true,
-    "bookInAdvanceDays": 15,
+    "bookInAdvanceDays": 14,
     "timeout": 30000
   },
   "facilities": {

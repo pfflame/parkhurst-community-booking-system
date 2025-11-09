@@ -19,7 +19,7 @@ program
     .description('Book a facility')
     .requiredOption('--facility <facility>', 'Facility to book (e.g., tennis_lower)')
     .option('--date <date>', 'Booking date (YYYY-MM-DD)')
-    .option('--book-in-advance [days]', 'Number of days in advance to book (e.g., 15 for 15 days from today). If no value is provided, defaults to value in config or 15. Mutually exclusive with --date.')
+    .option('--book-in-advance [days]', 'Number of days in advance to book (e.g., 14 for 14 days from today). If no value is provided, defaults to value in config or 14. Mutually exclusive with --date.')
     .requiredOption('--start-time <time>', 'Start time (HH:MM)')
     .requiredOption('--end-time <time>', 'End time (HH:MM)')
     .option('--profile <email_or_name>', 'User profile for credentials (email or name from config)')
@@ -185,7 +185,7 @@ async function executeBooking(options) {
   today.setHours(0, 0, 0, 0); // Normalize today to start of day
 
   const defaultAdvanceDaysFromConfig = config.defaults?.bookInAdvanceDays;
-  const hardcodedDefaultAdvanceDays = 15;
+  const hardcodedDefaultAdvanceDays = 14;
 
   if (options.date && options.bookInAdvance !== undefined) {
     console.error(chalk.red('Error: --date and --book-in-advance are mutually exclusive. Please use one or the other.'));

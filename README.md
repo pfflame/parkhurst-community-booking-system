@@ -67,7 +67,7 @@ The script will attempt to book the specified facility. The date can be provided
 **Required Parameters:**
 - `--facility <facility_id>` - Facility ID to book (e.g., tennis_lower)
 - `--date <date>` - Booking date (YYYY-MM-DD). Mutually exclusive with `--book-in-advance`.
-- `--book-in-advance [days]` - Number of days in advance to book (e.g., `15` for 15 days from today). If no value is provided, defaults to config value or 15. Mutually exclusive with `--date`.
+- `--book-in-advance [days]` - Number of days in advance to book (e.g., `14` for 14 days from today). If no value is provided, defaults to config value or 14. Mutually exclusive with `--date`.
 - `--start-time <time>` - Start time (HH:MM)
 - `--end-time <time>` - End time (HH:MM)
 
@@ -101,7 +101,7 @@ node index.js examples
 # Book for a specific date
 node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00
 
-# Book 15 days in advance (using default from config)
+# Book 14 days in advance (using default from config)
 node index.js book --facility tennis_lower --book-in-advance --start-time 12:00 --end-time 13:00
 
 # Book 10 days in advance
@@ -125,7 +125,7 @@ node index.js book --facility tennis_upper --date 2025-06-15 --start-time 12:00 
 
 ### Booking in Advance
 
-If `--book-in-advance` is used without a value, the script will use the default number of days specified in `config.json` (in `defaults.bookInAdvanceDays`, which is 15 by default in the example configuration). If this default is not found in the configuration, it will fall back to a hardcoded 15 days.
+If `--book-in-advance` is used without a value, the script will use the default number of days specified in `config.json` (in `defaults.bookInAdvanceDays`, which is 14 by default in the example configuration). If this default is not found in the configuration, it will fall back to a hardcoded 14 days.
 
 ```bash
 # Use default advance booking days from config

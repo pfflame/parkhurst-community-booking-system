@@ -170,7 +170,7 @@ function createSampleConfig(outputPath) {
       signature: "ZZ",
       bufferMinutes: 15,
       headless: true,
-      bookInAdvanceDays: 15, // Default days to book in advance
+      bookInAdvanceDays: 14, // Default days to book in advance
       timeout: 30000
     },
     facilities: {

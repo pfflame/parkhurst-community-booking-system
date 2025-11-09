@@ -172,7 +172,7 @@ https://parkhurst.skedda.com/booking?nbend=2025-06-15T13%3A00%3A00&nbspaces=1244
 **Required Parameters:**
 - `--facility <facility_id>`: Facility ID from configuration (e.g., tennis_lower)
 - `--date <date>`: Specifies the booking date in YYYY-MM-DD format. This is mutually exclusive with `--book-in-advance`.
-- `--book-in-advance [days]`: An optional integer specifying how many days in the future the booking should be made. For example, `15` means 15 days from the current date. If this option is provided without a value, it defaults to 15 days. If `--date` is provided, this option should not be used. If neither `--date` nor `--book-in-advance` is specified, the script will use the default number of days specified in `config.json` (`defaults.bookInAdvanceDays`); if this is not set in the config, it defaults to 15 days in advance.
+- `--book-in-advance [days]`: An optional integer specifying how many days in the future the booking should be made. For example, `14` means 14 days from the current date. If this option is provided without a value, it defaults to 14 days. If `--date` is provided, this option should not be used. If neither `--date` nor `--book-in-advance` is specified, the script will use the default number of days specified in `config.json` (`defaults.bookInAdvanceDays`); if this is not set in the config, it defaults to 14 days in advance.
 - `--start-time <time>`: Start time (HH:MM)
 - `--end-time <time>`: End time (HH:MM)
 
@@ -214,7 +214,7 @@ node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 
 # Custom title
 node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --title "Tennis Practice"
 
-# Book in advance (defaults to 15 days)
+# Book in advance (defaults to 14 days)
 node index.js book --facility tennis_lower --book-in-advance --start-time 12:00 --end-time 13:00
 
 # Book in advance with specific days
