@@ -273,7 +273,7 @@ class BookingAutomator {
       '[role="alert"]'      // ARIA role for alerts
     ];
 
-    let detectedErrorMessage = '';
+    const foundErrors = [];
 
     for (const selector of errorSelectors) {
       const elements = await this.page.$$(selector);
@@ -282,19 +282,72 @@ class BookingAutomator {
           const isVisible = await element.isIntersectingViewport();
           if (isVisible) {
             const text = await element.evaluate(el => el.textContent.trim());
-            if (text) { // If any visible error-like element has text, consider it an error.
-              detectedErrorMessage = `Booking failed. Detected error message: "${text}"`;
-              log(detectedErrorMessage);
-              throw new Error(detectedErrorMessage); // Throw immediately once a specific error is found.
+            if (text && text.length > 0) {
+              foundErrors.push(text);
             }
           }
         } catch (err) {
-          // If the error is the one we just threw, rethrow it. Otherwise, log the checking error.
-          if (err.message.startsWith('Booking failed. Detected error message:')) {
-            throw err;
-          }
-          log(`Error while checking selector ${selector} for error messages: ${err.message}`);
+          log(`Error while checking selector ${selector} for error messages: ${err.message}`, 'warn');
         }
+      }
+    }
+
+    if (foundErrors.length > 0) {
+      // Prioritize identifying the "real" error over informational messages.
+      // High priority keywords indicating a hard failure or refusal.
+      const highPriorityKeywords = [
+        'cannot', "can't", "couldn't",
+        'quota', 'exceeded',
+        'failed', 'error',
+        'confirmed because', // "This booking cannot be confirmed because..."
+        'not allowed',
+        'conflict'
+      ];
+
+      // Low priority/informational keywords to possibly ignore if they are the only thing found
+      const lowPriorityKeywords = [
+        'verified', 'residents', 'info', 'note'
+      ];
+
+      // Find the "worst" error
+      let bestCandidate = null;
+      let highestScore = -1;
+
+      for (const errorText of foundErrors) {
+        const lowerText = errorText.toLowerCase();
+        let score = 0;
+
+        // Check high priority keywords
+        if (highPriorityKeywords.some(kw => lowerText.includes(kw))) {
+          score = 10;
+        }
+        // Check if it looks like the generic info banner
+        else if (lowPriorityKeywords.some(kw => lowerText.includes(kw))) {
+          score = 1;
+        } else {
+          score = 5; // Unknown alert, assume it might be important
+        }
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestCandidate = errorText;
+        }
+      }
+
+      // If the highest score is low (meaning we only found info banners), 
+      // check if we are still on the booking page. 
+      // If we ARE still on the booking page (implied by this method being called),
+      // and we haven't seen a high priority error, but we DID find alerts...
+      // logic: if we found a verified resident banner, that doesn't mean failure by itself.
+      // But if we are stuck on this page and not redirected, something IS wrong.
+      // However, usually "Quota Exceeded" shows up.
+
+      if (bestCandidate && highestScore >= 5) {
+        const errorMessage = `Booking failed. Detected error message: "${bestCandidate}"`;
+        log(errorMessage);
+        throw new Error(errorMessage);
+      } else {
+        log(`Found informational alerts but no critical errors: ${foundErrors.join(' | ')}. Continuing checks...`);
       }
     }
 
