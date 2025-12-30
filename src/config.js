@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+// Load .env from the project root (one level up from src/)
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 /**
  * Loads profile credentials from environment variables

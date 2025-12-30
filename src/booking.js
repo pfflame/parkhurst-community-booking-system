@@ -10,10 +10,37 @@ class BookingAutomator {
 
   async initialize(headless = true) {
     log('Initializing browser...');
-    this.browser = await puppeteer.launch({
-      headless,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+
+    // Use system Chromium (installed via install-chromium.sh)
+    // Falls back to Puppeteer's bundled Chrome if Chromium not found
+    // Use system Chromium if available (specifically for Qinglong Docker deployment)
+    // otherwise fallback to bundled Chrome (for local macOS/Windows dev)
+    const chromiumPath = '/usr/bin/chromium';
+    const fs = require('fs');
+    if (fs.existsSync(chromiumPath)) {
+      log('Using system Chromium at ' + chromiumPath);
+      this.browser = await puppeteer.launch({
+        headless,
+        executablePath: chromiumPath,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu'
+        ]
+      });
+    } else {
+      log('System Chromium not found, using bundled browser');
+      this.browser = await puppeteer.launch({
+        headless,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu'
+        ]
+      });
+    }
     this.page = await this.browser.newPage();
     await this.page.setViewport({ width: 1280, height: 720 });
     log('Browser initialized successfully');
@@ -22,47 +49,47 @@ class BookingAutomator {
   async navigateAndLogin(bookingUrl) {
     log(`Navigating to: ${bookingUrl}`);
     await this.page.goto(bookingUrl, { waitUntil: 'networkidle2' });
-    
+
     const isLoggedIn = await this.page.$('.booking-form, #booking-form, form[action*="booking"]');
     if (isLoggedIn) {
       log('Already logged in, proceeding to booking form');
       return;
     }
-    
+
     await this.performLogin();
   }
 
   async performLogin() {
     log('Performing login...');
-    
+
     await this.page.waitForSelector('input[type="email"], input[name="email"], #email', { timeout: 10000 });
-    
+
     const emailSelector = await this.page.$('input[type="email"], input[name="email"], #email');
     const passwordSelector = await this.page.$('input[type="password"], input[name="password"], #password');
-    
+
     if (!emailSelector || !passwordSelector) {
       throw new Error('Login form not found');
     }
-    
+
     await emailSelector.type(this.config.credentials.email);
     await passwordSelector.type(this.config.credentials.password);
-    
+
     const submitButton = await this.page.$('button[type="submit"], input[type="submit"], .btn-primary');
     if (submitButton) {
       await submitButton.click();
     } else {
       await this.page.keyboard.press('Enter');
     }
-    
+
     await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
     log('Login completed successfully');
   }
 
   async fillBookingForm(bookingTitle, signature) {
     log('Filling booking form...');
-    
+
     await this.page.waitForSelector('input, textarea, select', { timeout: 10000 });
-    
+
     const titleSelectors = [
       'input[name*="title"]',
       'input[placeholder*="title"]',
@@ -70,7 +97,7 @@ class BookingAutomator {
       '#booking-title',
       '.booking-title input'
     ];
-    
+
     for (const selector of titleSelectors) {
       const element = await this.page.$(selector);
       if (element) {
@@ -80,7 +107,7 @@ class BookingAutomator {
         break;
       }
     }
-    
+
     const signatureSelectors = [
       'input[name*="signature"]',
       'input[placeholder*="signature"]',
@@ -88,7 +115,7 @@ class BookingAutomator {
       '#signature',
       '.signature input'
     ];
-    
+
     for (const selector of signatureSelectors) {
       const element = await this.page.$(selector);
       if (element) {
@@ -98,13 +125,13 @@ class BookingAutomator {
         break;
       }
     }
-    
+
     await delay(1000);
   }
 
   async submitBooking() {
     log('Submitting booking...');
-    
+
     const buttonSelectors = [
       '.row.pt-5 .col-12 button.btn.btn-success',
       'button.btn.btn-success',
@@ -112,17 +139,17 @@ class BookingAutomator {
       '.btn-success',
       '.confirm-booking'
     ];
-    
+
     const textBasedSelectors = ['Confirm', 'Book', 'Submit'];
-    
+
     let confirmButton = null;
-    
+
     for (const selector of buttonSelectors) {
       const buttons = await this.page.$$(selector);
       for (const button of buttons) {
         const isVisible = await button.isIntersectingViewport();
         const isEnabled = await button.evaluate(el => !el.disabled);
-        
+
         if (isVisible && isEnabled) {
           confirmButton = button;
           log(`Found confirm button with selector: ${selector}`);
@@ -131,18 +158,18 @@ class BookingAutomator {
       }
       if (confirmButton) break;
     }
-    
+
     if (!confirmButton) {
       for (const text of textBasedSelectors) {
         const button = await this.page.evaluateHandle((searchText) => {
           const buttons = Array.from(document.querySelectorAll('button'));
-          return buttons.find(btn => 
+          return buttons.find(btn =>
             btn.textContent.trim().toLowerCase().includes(searchText.toLowerCase()) &&
             !btn.disabled &&
             btn.offsetParent !== null
           );
         }, text);
-        
+
         if (button && button.asElement()) {
           confirmButton = button.asElement();
           log(`Found confirm button with text: ${text}`);
@@ -150,14 +177,14 @@ class BookingAutomator {
         }
       }
     }
-    
+
     if (!confirmButton) {
       throw new Error('Confirm booking button not found or not clickable');
     }
-    
+
     await confirmButton.scrollIntoView();
     await delay(500);
-    
+
     try {
       await confirmButton.click();
       log('Booking submitted with standard click');
@@ -165,7 +192,7 @@ class BookingAutomator {
       log('Standard click failed, trying JavaScript click');
       await confirmButton.evaluate(el => el.click());
     }
-    
+
     await this.handlePostSubmissionDialogs();
     // verifyBookingSuccess includes its own delay to wait for redirects or messages.
     await this.verifyBookingSuccess();
@@ -173,16 +200,16 @@ class BookingAutomator {
 
   async handlePostSubmissionDialogs() {
     log('Checking for post-submission dialogs...');
-    
+
     const modalSelectors = [
       '.modal button.btn-success',
       '.modal button.btn-primary',
       '.popup button[type="submit"]',
       '.dialog .confirm'
     ];
-    
+
     const modalTextSelectors = ['OK', 'Confirm'];
-    
+
     for (const selector of modalSelectors) {
       const button = await this.page.$(selector);
       if (button) {
@@ -195,38 +222,24 @@ class BookingAutomator {
         }
       }
     }
-    
+
     for (const text of modalTextSelectors) {
       const button = await this.page.evaluateHandle((searchText) => {
         const buttons = Array.from(document.querySelectorAll('button'));
-        return buttons.find(btn => 
+        return buttons.find(btn =>
           btn.textContent.trim().toLowerCase().includes(searchText.toLowerCase()) &&
           !btn.disabled &&
           btn.offsetParent !== null &&
           (btn.closest('.modal') || btn.closest('.popup') || btn.closest('.dialog'))
         );
       }, text);
-      
+
       if (button && button.asElement()) {
         await button.asElement().click();
         log(`Clicked modal confirmation with text: ${text}`);
         await delay(1000);
         return;
       }
-    }
-  }
-
-  async logErrorToFile(errorMessage) {
-    const fs = require('fs').promises;
-    const path = require('path');
-    const logFilePath = path.join(process.cwd(), 'booking_errors.log');
-    const timestamp = new Date().toISOString();
-    const logMessage = `${timestamp} - ${errorMessage}\n`;
-    try {
-      await fs.appendFile(logFilePath, logMessage);
-      log(`Error logged to ${logFilePath}`);
-    } catch (err) {
-      log(`Failed to write to log file: ${err.message}`);
     }
   }
 
@@ -272,8 +285,7 @@ class BookingAutomator {
             if (text) { // If any visible error-like element has text, consider it an error.
               detectedErrorMessage = `Booking failed. Detected error message: "${text}"`;
               log(detectedErrorMessage);
-              await this.logErrorToFile(detectedErrorMessage);
-              throw new Error(detectedErrorMessage); // Throw immediately once a specific error is found and logged.
+              throw new Error(detectedErrorMessage); // Throw immediately once a specific error is found.
             }
           }
         } catch (err) {
@@ -290,7 +302,6 @@ class BookingAutomator {
     const pageTitle = await this.page.title();
     const genericFailureMessage = `Booking failed: Did not redirect to success URL (${targetSuccessUrl}) and no specific error messages were found. Current URL: ${currentUrl}, Page Title: "${pageTitle}"`;
     log(genericFailureMessage);
-    await this.logErrorToFile(genericFailureMessage);
     throw new Error(genericFailureMessage);
   }
 
@@ -311,10 +322,10 @@ class BookingAutomator {
       customTitle = null,
       headless = this.config.defaults.headless
     } = options;
-    
+
     try {
       await this.initialize(headless);
-      
+
       const bookingUrl = generateBookingUrl({
         baseUrl: this.config.urls.baseUrl,
         spaceId: facility.spaceId,
@@ -322,25 +333,25 @@ class BookingAutomator {
         startTime,
         endTime
       });
-      
+
       const bookingTitle = customTitle || formatBookingTitle(
         startTime,
         endTime,
         this.config.defaults.bufferMinutes
       );
-      
+
       log(`Booking details: ${facility.name} on ${date} from ${startTime} to ${endTime}`);
-      
+
       await this.navigateAndLogin(bookingUrl);
       await this.fillBookingForm(bookingTitle, signature);
       await this.submitBooking();
-      
+
       log('Booking process completed successfully!');
-      
+
     } catch (error) {
       log(`Booking failed: ${error.message}`);
       log(`Error details: ${error.stack || 'No stack trace available'}`);
-      
+
       // Log additional context if available
       if (this.page) {
         try {
@@ -352,7 +363,7 @@ class BookingAutomator {
           log(`Could not retrieve page information: ${pageError.message}`);
         }
       }
-      
+
       throw error;
     } finally {
       await this.close();

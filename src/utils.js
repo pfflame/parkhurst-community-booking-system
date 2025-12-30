@@ -6,7 +6,7 @@ const moment = require('moment');
 function formatBookingTitle(startTime, endTime, bufferMinutes = 15) {
   const startMoment = moment(startTime, 'HH:mm').subtract(bufferMinutes, 'minutes');
   const endMoment = moment(endTime, 'HH:mm').add(bufferMinutes, 'minutes');
-  
+
   return `${startMoment.format('h:mmA')} - ${endMoment.format('h:mmA')}`;
 }
 
@@ -23,7 +23,7 @@ function timeToISO(date, time) {
 function generateBookingUrl({ baseUrl, spaceId, date, startTime, endTime }) {
   const startISO = encodeURIComponent(timeToISO(date, startTime));
   const endISO = encodeURIComponent(timeToISO(date, endTime));
-  
+
   return `${baseUrl}?nbend=${endISO}&nbspaces=${spaceId}&nbstart=${startISO}`;
 }
 
@@ -72,7 +72,7 @@ function delay(ms) {
 function log(message, level = 'info') {
   const timestamp = moment().format('YYYY-MM-DD HH:mm:ss');
   const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
-  
+
   switch (level) {
     case 'error':
       console.error(`${prefix} ${message}`);
@@ -82,6 +82,18 @@ function log(message, level = 'info') {
       break;
     default:
       console.log(`${prefix} ${message}`);
+  }
+
+  // Also log to file
+  const fs = require('fs');
+  const path = require('path');
+  const logFile = path.join(__dirname, '..', 'booking_errors.log');
+
+  try {
+    const logEntry = `${prefix} ${message}\n`;
+    fs.appendFileSync(logFile, logEntry);
+  } catch (err) {
+    console.error(`Failed to write to log file: ${err.message}`);
   }
 }
 
