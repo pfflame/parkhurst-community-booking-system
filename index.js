@@ -181,8 +181,15 @@ function validateBookingParams(options, forceDate = false, config) {
   }
 
   // Facility validation
-  if (!options.facility || !getFacility(config, options.facility)) {
-    errors.push(`Facility '${options.facility || ''}' not found or not specified. Use 'list' command to see available facilities.`);
+  if (!options.facility) {
+    errors.push(`Facility not specified. Use 'list' command to see available facilities.`);
+  } else {
+    const facilities = options.facility.split(',').map(f => f.trim());
+    for (const fac of facilities) {
+      if (!getFacility(config, fac)) {
+        errors.push(`Facility '${fac}' not found. Use 'list' command to see available facilities.`);
+      }
+    }
   }
 
   if (!isValidTime(options.startTime)) {
@@ -286,7 +293,18 @@ async function executeBooking(options) {
     config.defaults.signature = options.signature;
   }
 
-  const facility = getFacility(config, options.facility);
+  // Parse facilities (support comma-separated inputs for fallback)
+  const facilityKeys = options.facility.split(',').map(f => f.trim());
+  const facilitiesToTry = [];
+
+  for (const key of facilityKeys) {
+    const fac = getFacility(config, key);
+    if (fac) {
+      facilitiesToTry.push(fac);
+    }
+    // getFacility throws if not found, so we don't need else here unless we change getFacility behavior
+  }
+
   const headless = options.headless === 'true' || options.headless === true;
 
   console.log(chalk.blue('\n🎯 Booking Summary:'));
@@ -294,7 +312,7 @@ async function executeBooking(options) {
   console.log(chalk.white(`📧 Email: ${config.credentials.email}`));
   console.log(chalk.white(`📅 Date: ${options.date}${options.bookInAdvance ? ` (calculated from ${options.bookInAdvance} days in advance)` : ''}`));
   console.log(chalk.white(`⏰ Time: ${options.startTime} - ${options.endTime}`));
-  console.log(chalk.white(`🏢 Facility: ${facility.name}`));
+  console.log(chalk.white(`🏢 Facility Target(s): ${facilitiesToTry.map(f => f.name).join(' -> ')}`));
   console.log(chalk.white(`✍️  Signature: ${config.defaults.signature}`));
   console.log(chalk.white(`🤖 Headless: ${headless ? 'Yes' : 'No'}`));
 
@@ -304,37 +322,84 @@ async function executeBooking(options) {
 
   console.log();
 
-  const automator = new BookingAutomator(config);
+  // Try each facility in order
+  let success = false;
+  let lastError = null;
 
-  await automator.book({
-    facility,
-    date: options.date,
-    startTime: options.startTime,
-    endTime: options.endTime,
-    signature: config.defaults.signature,
-    customTitle: options.title,
-    headless
-  });
+  for (let i = 0; i < facilitiesToTry.length; i++) {
+    const facility = facilitiesToTry[i];
+    console.log(chalk.yellow(`\n👉 Attempt ${i + 1}/${facilitiesToTry.length}: Booking ${facility.name} (${facility.key})...`));
 
-  console.log(chalk.green('\n✅ Booking process completed successfully!'));
+    const automator = new BookingAutomator(config);
 
-  // Send success notification if Qinglong notification is available
-  if (sendNotify) {
     try {
-      const notificationTitle = '🎾 Parkhurst Booking Success';
-      const notificationBody = `✅ Booking confirmed!\n\n` +
-        `📧 User: ${config.credentials.email}\n` +
-        `📅 Date: ${options.date}\n` +
-        `⏰ Time: ${options.startTime} - ${options.endTime}\n` +
-        `🏢 Facility: ${facility.name}\n` +
-        `✍️  Signature: ${config.defaults.signature}\n\n` +
-        `Timestamp: ${new Date().toLocaleString()}`;
+      await automator.book({
+        facility,
+        date: options.date,
+        startTime: options.startTime,
+        endTime: options.endTime,
+        signature: config.defaults.signature,
+        customTitle: options.title,
+        headless
+      });
 
-      await sendNotify(notificationTitle, notificationBody);
-      log('Notification sent successfully');
-    } catch (notifyError) {
-      console.error(chalk.yellow(`Warning: Failed to send notification: ${notifyError.message}`));
+      console.log(chalk.green(`\n✅ Successfully booked: ${facility.name}`));
+      success = true;
+
+      // Send success notification if Qinglong notification is available
+      if (sendNotify) {
+        try {
+          const notificationTitle = '🎾 Parkhurst Booking Success';
+          const notificationBody = `✅ Booking confirmed!\n\n` +
+            `📧 User: ${config.credentials.email}\n` +
+            `📅 Date: ${options.date}\n` +
+            `⏰ Time: ${options.startTime} - ${options.endTime}\n` +
+            `🏢 Facility: ${facility.name}\n` +
+            `✍️  Signature: ${config.defaults.signature}\n\n` +
+            `Timestamp: ${new Date().toLocaleString()}`;
+
+          await sendNotify(notificationTitle, notificationBody);
+          log('Notification sent successfully');
+        } catch (notifyError) {
+          console.error(chalk.yellow(`Warning: Failed to send notification: ${notifyError.message}`));
+        }
+      }
+
+      // Stop trying if successful
+      break;
+
+    } catch (error) {
+      console.error(chalk.red(`❌ Attempt failed for ${facility.name}: ${error.message}`));
+      lastError = error;
+
+      if (i < facilitiesToTry.length - 1) {
+        console.log(chalk.blue(`⏳ Retrying with next facility in fallback list...`));
+      } else {
+        console.log(chalk.red(`\n⛔ All facility options exhausted.`));
+      }
     }
+  }
+
+  // If we exhausted all options without success, fail the process
+  if (!success) {
+    console.error(chalk.red('\n❌ Final Result: Booking failed for all requested facilities.'));
+
+    // Send error notification if Qinglong notification is available
+    // Using the last error message as context
+    if (sendNotify) {
+      try {
+        await sendNotify(
+          '🎾 Parkhurst Booking Failed',
+          `❌ All booking attempts failed\n\nTarget(s): ${facilitiesToTry.map(f => f.name).join(', ')}\nLast Error: ${lastError ? lastError.message : 'Unknown error'}\n\nTimestamp: ${new Date().toLocaleString()}`
+        );
+      } catch (notifyError) {
+        console.error(chalk.yellow(`Warning: Failed to send notification: ${notifyError.message}`));
+      }
+    }
+
+    process.exit(1);
+  } else {
+    console.log(chalk.green('\n✅ Booking process completed successfully!'));
   }
 }
 

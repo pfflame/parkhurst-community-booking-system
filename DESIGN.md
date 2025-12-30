@@ -95,9 +95,10 @@ https://parkhurst.skedda.com/booking?nbend=2025-06-15T13%3A00%3A00&nbspaces=1244
 
 ### 3. Form Filling
 - **Booking Title Generation**:
-  - Format: `{start_time-buffer}-{end_time+buffer}`
-  - Example: 12:00PM-1:00PM → "11:45AM - 1:15PM"
-  - Configurable buffer time (default: 15 minutes)
+  - **Default**: Auto-generates format `{start_time-buffer}-{end_time+buffer}` (e.g., 12:00PM-1:00PM → "11:45AM - 1:15PM").
+  - **Manual Override**: Can be overridden using the `--title` CLI argument. 
+    - Example: `node index.js book ... --title "League Match"` will use "League Match" instead of the time range.
+  - Configurable buffer time (default: 15 minutes).
 
 - **Form Field Detection**:
   - Multiple selector strategies for title field
@@ -170,7 +171,8 @@ https://parkhurst.skedda.com/booking?nbend=2025-06-15T13%3A00%3A00&nbspaces=1244
 
 #### `book` - Primary booking command
 **Required Parameters:**
-- `--facility <facility_id>`: Facility ID from configuration (e.g., tennis_lower)
+**Required Parameters:**
+- `--facility <facility_ids>`: Facility ID from configuration (e.g., tennis_lower). Accepts comma-separated values (e.g., `tennis_lower,tennis_upper`) for automatic fallback if the primary facility fails.
 - `--date <date>`: Specifies the booking date in YYYY-MM-DD format. This is mutually exclusive with `--book-in-advance`.
 - `--book-in-advance [days]`: An optional integer specifying how many days in the future the booking should be made. For example, `14` means 14 days from the current date. If this option is provided without a value, it defaults to 14 days. If `--date` is provided, this option should not be used. If neither `--date` nor `--book-in-advance` is specified, the script will use the default number of days specified in `config.json` (`defaults.bookInAdvanceDays`); if this is not set in the config, it defaults to 14 days in advance.
 - `--start-time <time>`: Start time (HH:MM)

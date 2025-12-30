@@ -47,14 +47,12 @@ An automated facility booking system for Parkhurst HOA using Node.js and Puppete
 
 ### Commands
 
-- **Book a facility**:
-  ```bash
-  node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00
-  ```
-
-- **Book in advance** (defaults to 14 days):
-  ```bash
-  node index.js book --facility tennis_lower --book-in-advance
+- **Required Parameters:**
+- `--facility <facility_ids>` - Facility ID to book (e.g., tennis_lower). **Supports fallback:** Provide multiple comma-separated IDs (e.g., `tennis_lower,tennis_upper`). If the first one fails, it tries the next.
+- `--date <date>` - Booking date (YYYY-MM-DD). Mutually exclusive with `--book-in-advance`.
+- `--book-in-advance [days]` - Number of days in advance to book (e.g., `14` for 14 days from today). If no value is provided, defaults to config value or 14. Mutually exclusive with `--date`.
+- `--start-time <time>` - Start time (HH:MM)
+- `--end-time <time>` - End time (HH:MM)
   ```
 
 - **List facilities**:

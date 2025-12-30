@@ -1,6 +1,8 @@
 const puppeteer = require('puppeteer');
 const { formatBookingTitle, generateBookingUrl, delay, log } = require('./utils');
 
+const fs = require('fs');
+
 class BookingAutomator {
   constructor(config) {
     this.config = config;
@@ -16,7 +18,6 @@ class BookingAutomator {
     // Use system Chromium if available (specifically for Qinglong Docker deployment)
     // otherwise fallback to bundled Chrome (for local macOS/Windows dev)
     const chromiumPath = '/usr/bin/chromium';
-    const fs = require('fs');
     if (fs.existsSync(chromiumPath)) {
       log('Using system Chromium at ' + chromiumPath);
       this.browser = await puppeteer.launch({
