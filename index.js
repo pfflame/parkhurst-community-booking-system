@@ -291,7 +291,12 @@ async function executeBooking(options) {
     process.exit(1);
   }
 
-  bookingDateStr = calculatedDate.toISOString().split('T')[0];
+  // Fix: format date using local time to prevent timezone shifts (e.g. UTC+8 issues)
+  const year = calculatedDate.getFullYear();
+  const month = String(calculatedDate.getMonth() + 1).padStart(2, '0');
+  const day = String(calculatedDate.getDate()).padStart(2, '0');
+
+  bookingDateStr = `${year}-${month}-${day}`;
   options.date = bookingDateStr; // Update options.date to be used by the rest of the function
 
   // The rest of executeBooking continues from here, using options.date (which is now bookingDateStr)
