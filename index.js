@@ -7,19 +7,26 @@ const { loadConfig, validateConfig, getFacility, listFacilities } = require('./s
 const { isValidDate, isValidTime, isValidTimeRange, isValidBookingDate, log } = require('./src/utils');
 const BookingAutomator = require('./src/booking');
 
-// Load Qinglong notification module if available
+// Load Qinglong notification module lazily to allow env var overrides
 let sendNotify = null;
-try {
-  // Look for sendNotify.js in parent directory (one level up)
-  const notifyPath = path.join(__dirname, '..', 'sendNotify.js');
-  if (require('fs').existsSync(notifyPath)) {
-    const { sendNotify: notify } = require(notifyPath);
-    sendNotify = notify;
-    log('Qinglong notification module loaded');
+
+function loadNotifier() {
+  if (sendNotify) return;
+
+  try {
+    // Look for sendNotify.js in parent directory (one level up)
+    const notifyPath = path.join(__dirname, '..', 'sendNotify.js');
+    if (require('fs').existsSync(notifyPath)) {
+      // Clear cache to ensure we get a fresh instance if needed (though unlikely to be re-required)
+      delete require.cache[require.resolve(notifyPath)];
+      const { sendNotify: notify } = require(notifyPath);
+      sendNotify = notify;
+      log('Qinglong notification module loaded');
+    }
+  } catch (error) {
+    // Notification module not available (running locally or Qinglong not installed)
+    log('Running without Qinglong notifications');
   }
-} catch (error) {
-  // Notification module not available (running locally or Qinglong not installed)
-  log('Running without Qinglong notifications');
 }
 
 const program = new Command();
@@ -40,10 +47,20 @@ program
   .option('--profile <email_or_name>', 'User profile for credentials (email or name from config)')
   .option('--signature <signature>', 'Custom signature (overrides config)')
   .option('--title <title>', 'Custom booking title (overrides auto-generation)')
+  .option('--notify-email <email>', 'Custom notification recipient email (overrides Qinglong env)')
   .option('--headless <boolean>', 'Run in headless mode', 'true')
   .option('--config <path>', 'Path to custom config file')
   .option('--force-date', 'Allow booking dates in the past (for testing or specific scenarios)')
   .action(async (options) => {
+    // Set custom notification email if provided (Must be done before loading notifier)
+    if (options.notifyEmail) {
+      process.env.SMTP_TO = options.notifyEmail;
+      log(`Overriding notification recipient to: ${options.notifyEmail}`);
+    }
+
+    // Initialize notifier
+    loadNotifier();
+
     try {
       await executeBooking(options);
     } catch (error) {
@@ -145,11 +162,14 @@ program
     console.log(chalk.yellow('\n9. Validate configuration:'));
     console.log(chalk.white('   node index.js validate'));
 
-    console.log(chalk.yellow('\n8. Book in advance (using default days from config):'));
+    console.log(chalk.yellow('\n10. Book in advance (using default days from config):'));
     console.log(chalk.white('   node index.js book --facility tennis_lower --book-in-advance --start-time 12:00 --end-time 13:00'));
 
-    console.log(chalk.yellow('\n9. Book specific days in advance:'));
+    console.log(chalk.yellow('\n11. Book specific days in advance:'));
     console.log(chalk.white('   node index.js book --facility tennis_lower --book-in-advance 10 --start-time 12:00 --end-time 13:00'));
+
+    console.log(chalk.yellow('\n12. Book with custom notification recipient:'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --notify-email "user@example.com"'));
 
     console.log(chalk.yellow('\n📋 Profile and Signature Examples:'));
     console.log(chalk.white('   # Use a specific profile (requires PROFILE_JOHN_DOE_EXAMPLE_COM_PASSWORD in .env)'));
