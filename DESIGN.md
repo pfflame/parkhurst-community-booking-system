@@ -39,6 +39,11 @@ The Parkhurst Community Booking System is an automated facility booking solution
    - Logging utilities with timestamps
    - Input validation helpers
 
+5. **Notification System** (`index.js` + `sendNotify.js`)
+   - **Lazy Loading Strategy**: The notification module (`sendNotify.js`) is loaded *after* command-line arguments are parsed.
+   - **Environment Override**: This allows the `--notify-email` CLI flag to inject a `process.env.SMTP_TO` value before the module initializes, enabling per-job recipient overrides without modifying global Qinglong settings.
+   - **External Integration**: Designed to integrate with the standard Qinglong `sendNotify.js` script if present in the parent directory.
+
 ### File Structure
 
 ```
@@ -179,6 +184,7 @@ https://parkhurst.skedda.com/booking?nbend=2025-06-15T13%3A00%3A00&nbspaces=1244
 - `--end-time <time>`: End time (HH:MM)
 
 **Optional Parameters:**
+- `--notify-email <email>`: Overrides the default notification recipient (`SMTP_TO`) for this specific execution. Essential for sending alerts to different users for different bookings.
 - `--profile <email_or_name>`: User profile for credentials (email or name from config)
 - `--signature <signature>`: Custom signature (overrides config default)
 - `--title <title>`: Custom booking title (overrides auto-generation)

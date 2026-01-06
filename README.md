@@ -7,7 +7,9 @@ An automated facility booking system for Parkhurst HOA using Node.js and Puppete
 - **Automated Login & Booking**: Handles credential management and facility reservations.
 - **Smart Logic**: Auto-calculates booking titles and handles buffer times.
 - **Robustness**: Enhanced button detection, modal handling, and visual debug mode.
+- **Robustness**: Enhanced button detection, modal handling, and visual debug mode.
 - **Secure**: Supports environment variables for credential protection.
+- **Notifications**: Integrated with Qinglong specific notification logic.
 
 > [!NOTE]
 > For detailed technical architecture, internal logic, and design decisions, please refer to [DESIGN.md](DESIGN.md).
@@ -52,7 +54,17 @@ An automated facility booking system for Parkhurst HOA using Node.js and Puppete
 - `--date <date>` - Booking date (YYYY-MM-DD). Mutually exclusive with `--book-in-advance`.
 - `--book-in-advance [days]` - Number of days in advance to book (e.g., `14` for 14 days from today). If no value is provided, defaults to config value or 14. Mutually exclusive with `--date`.
 - `--start-time <time>` - Start time (HH:MM)
+- `--start-time <time>` - Start time (HH:MM)
 - `--end-time <time>` - End time (HH:MM)
+
+**Optional Parameters:**
+- `--notify-email <email>` - Override general notification recipient for this specific job.
+- `--profile <email_or_name>` - User profile for credentials.
+- `--signature <signature>` - Custom signature.
+- `--title <title>` - Custom booking title.
+- `--headless <boolean>` - Run in headless mode (default: true).
+- `--config <path>` - Custom config file path.
+- `--force-date` - Allow booking dates in the past.
   ```
 
 - **List facilities**:
