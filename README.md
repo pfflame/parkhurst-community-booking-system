@@ -58,7 +58,7 @@ An automated facility booking system for Parkhurst HOA using Node.js and Puppete
 - `--end-time <time>` - End time (HH:MM)
 
 **Optional Parameters:**
-- `--notify-email <email>` - Override general notification recipient for this specific job.
+- `--notify-email <email>` - Override general notification recipient. Support multiple recipients by separating with commas (e.g., `"user1@test.com, user2@test.com"`).
 - `--profile <email_or_name>` - User profile for credentials.
 - `--signature <signature>` - Custom signature.
 - `--title <title>` - Custom booking title.

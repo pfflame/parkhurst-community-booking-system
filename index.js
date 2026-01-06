@@ -4,7 +4,7 @@ const { Command } = require('commander');
 const chalk = require('chalk');
 const path = require('path');
 const { loadConfig, validateConfig, getFacility, listFacilities } = require('./src/config');
-const { isValidDate, isValidTime, isValidTimeRange, isValidBookingDate, log } = require('./src/utils');
+const { isValidDate, isValidTime, isValidTimeRange, isValidBookingDate, log, formatBookingTitle } = require('./src/utils');
 const BookingAutomator = require('./src/booking');
 
 // Load Qinglong notification module lazily to allow env var overrides
@@ -374,13 +374,15 @@ async function executeBooking(options) {
       // Send success notification if Qinglong notification is available
       if (sendNotify) {
         try {
+          const finalBookingTitle = options.title || formatBookingTitle(options.startTime, options.endTime, config.defaults.bufferMinutes);
+
           const notificationTitle = '🎾 Parkhurst Booking Success';
           const notificationBody = `✅ Booking confirmed!\n\n` +
             `📧 User: ${config.credentials.email}\n` +
             `📅 Date: ${options.date}\n` +
             `⏰ Time: ${options.startTime} - ${options.endTime}\n` +
             `🏢 Facility: ${facility.name}\n` +
-            `✍️  Signature: ${config.defaults.signature}\n\n` +
+            `📝 Title: ${finalBookingTitle}\n\n` +
             `Timestamp: ${new Date().toLocaleString()}`;
 
           await sendNotify(notificationTitle, notificationBody);
