@@ -2,166 +2,168 @@
 
 ## Project Overview
 
-The Parkhurst Community Booking System is an automated facility booking solution built with Node.js and Puppeteer. It provides a command-line interface for residents to book community facilities through the Skedda booking platform without manual browser interaction.
-
-### Key Objectives
-- Automate the tedious process of facility booking
-- Provide a reliable, error-resistant booking system with enhanced button detection
-- Offer flexible configuration options for different use cases
-- Maintain security best practices for credential handling
-- Handle dynamic web elements and modal dialogs effectively
+An automated facility booking tool built with Node.js and Puppeteer. It drives the
+Skedda/AllBooked booking platform from the command line so recurring court bookings can run
+unattended from a scheduler (Qinglong cron).
 
 ## System Architecture
 
 ### Core Components
 
 1. **CLI Interface** (`index.js`)
-   - Command parsing and validation using Commander.js
-   - User interaction and feedback with colored output
-   - Comprehensive error handling and reporting
+   - Command parsing with Commander.js
+   - Date calculation (`--date` or `--book-in-advance`)
+   - Facility fallback loop and pre-submit retry
+   - Success/failure notification dispatch
 
 2. **Booking Engine** (`src/booking.js`)
-   - Puppeteer browser automation with enhanced selectors
-   - Multi-strategy button detection and clicking
-   - Modal dialog handling and confirmation
-   - Login and form filling with fallback mechanisms
-   - Success/failure verification with multiple indicators
+   - Puppeteer browser lifecycle
+   - Login, form filling, multi-strategy button detection
+   - Modal dialog handling
+   - Polling-based success verification
 
-3. **Configuration Management** (`src/config.js`)
+3. **Alert Classification** (`src/booking-messages.js`)
+   - Scores visible page alerts as failure / confirmation / informational
+   - Pure functions, no browser dependency
+
+4. **Completed-URL Detection** (`src/booking-url.js`)
+   - Recognises the post-booking URL across tenant hostname migrations
+     (`skedda.com` → `allbooked.com`)
+
+5. **Configuration** (`src/config.js`)
    - Config file loading and validation
-   - Environment variable support with .env integration
-   - Facility management and listing
-   - Sample configuration generation
+   - Explicit two-field email/password files, separate from shared booking settings
 
-4. **Utilities** (`src/utils.js`)
-   - Date/time formatting and validation
-   - URL generation with proper encoding
-   - Logging utilities with timestamps
-   - Input validation helpers
+6. **Utilities** (`src/utils.js`)
+   - Booking title formatting, URL generation, timestamped logging
 
-5. **Notification System** (`index.js` + `sendNotify.js`)
-   - **Lazy Loading Strategy**: The notification module (`sendNotify.js`) is loaded *after* command-line arguments are parsed.
-   - **Environment Override**: This allows the `--notify-email` CLI flag to inject a `process.env.SMTP_TO` value before the module initializes, enabling per-job recipient overrides without modifying global Qinglong settings.
-   - **External Integration**: Designed to integrate with the standard Qinglong `sendNotify.js` script if present in the parent directory.
+7. **Notifications** (`index.js` + external `sendNotify.js`)
+   - **Lazy loading**: the Qinglong `sendNotify.js` in the parent directory is required *after*
+     argument parsing, so `--notify-email` can set `process.env.SMTP_TO` first. This allows
+     per-job recipients without changing global Qinglong settings.
+   - Absent outside Qinglong, in which case the tool runs without notifications.
 
 ### File Structure
 
 ```
 src/
-├── booking.js      # Main automation logic with enhanced selectors
-├── config.js       # Configuration handling with env support
-└── utils.js        # Helper functions and validation
+├── booking.js           # Automation and verification
+├── booking-messages.js  # Alert classification
+├── booking-url.js       # Completed-booking URL detection
+├── config.js            # Configuration and credentials
+└── utils.js             # Helpers, logging
+
+test/
+├── booking.test.js      # Pure logic (URL + alert classification)
+└── verify.test.js       # Verification loop against a stubbed page
 
 config/
-└── config.json     # User configuration
+├── config.json          # User configuration (gitignored)
+└── config.example.json  # Template
 
-.env.example       # Environment variables template
-index.js           # CLI entry point with Commander.js
-package.json       # Dependencies and scripts
-README.md         # User documentation
-DESIGN.md         # Technical design (this file)
-.gitignore        # Git ignore rules
+config/credentials.example.json  # Two-field user template
+config/users/            # Private account files (Git-ignored)
+index.js                 # CLI entry point
+booking_errors.log       # Runtime log (gitignored)
 ```
 
-## URL Format Analysis
+## URL Format
 
-The Skedda booking system uses parameterized URLs for direct booking access:
+Skedda uses parameterized URLs to open a pre-filled booking form:
 
 ```
-https://parkhurst.skedda.com/booking?nbend=2025-06-15T13%3A00%3A00&nbspaces=1244466&nbstart=2025-06-15T12%3A00%3A00
+https://parkhurst.skedda.com/booking?nbend=2026-08-21T17%3A00%3A00&nbspaces=1244466&nbstart=2026-08-21T16%3A00%3A00
 ```
 
-### URL Parameters:
-- `nbend`: Booking end time in ISO format (URL encoded)
-- `nbspaces`: Facility/space ID (unique identifier)
-- `nbstart`: Booking start time in ISO format (URL encoded)
+- `nbstart` / `nbend`: start and end datetimes, ISO format, URL encoded
+- `nbspaces`: facility/space ID
 
-### URL Generation Process:
-1. Convert date and time to ISO format (`YYYY-MM-DDTHH:mm:ss`)
-2. URL encode the datetime strings
-3. Construct URL with base URL and parameters
-4. Navigate directly to pre-filled booking form
+These parameters disappear once a booking completes, which is the primary success signal.
 
 ## Booking Workflow
 
 ### 1. Initialization
-- Launch Puppeteer browser (headless or visible)
-- Set viewport and user agent
-- Configure timeouts and navigation settings
+- Launch Chromium — the system binary at `/usr/bin/chromium` when present (Docker), otherwise
+  Puppeteer's bundled build (local development)
+- Set a 1280x720 viewport
 
 ### 2. Navigation and Authentication
-- Navigate to generated booking URL
-- Check if already logged in (detect booking form)
-- If not logged in, perform login sequence:
-  - Wait for login form elements
-  - Fill email and password from configuration
-  - Submit login form
-  - Wait for navigation to booking page
+- Navigate to the generated booking URL
+- If a booking form is already present, skip login
+- Otherwise fill email/password and submit, then wait for navigation
 
 ### 3. Form Filling
-- **Booking Title Generation**:
-  - **Default**: Auto-generates format `{start_time-buffer}-{end_time+buffer}` (e.g., 12:00PM-1:00PM → "11:45AM - 1:15PM").
-  - **Manual Override**: Can be overridden using the `--title` CLI argument. 
-    - Example: `node index.js book ... --title "League Match"` will use "League Match" instead of the time range.
-  - Configurable buffer time (default: 15 minutes).
+- **Title**: defaults to `{start - buffer} - {end + buffer}` (e.g. 16:00–17:00 with a 15 minute
+  buffer becomes "3:45PM - 5:15PM"); `--title` overrides it
+- **Field detection**: several candidate selectors are tried for both title and signature
+- A missing **title** field throws before submission rather than creating a blank-titled booking.
+  A missing **signature** field only warns, since it may legitimately be optional.
 
-- **Form Field Detection**:
-  - Multiple selector strategies for title field
-  - Multiple selector strategies for signature field
-  - Fallback selectors for different form layouts
-  - Clear existing content before filling
+### 4. Submission
+- Priority-ordered button selectors, most specific first
+  (`.row.pt-5 .col-12 button.btn.btn-success`), falling back to matching button text
+  ("Confirm" / "Book" / "Submit")
+- Standard Puppeteer click, with a JavaScript click as fallback
+- Post-submission modal dialogs are detected and confirmed
 
-### 4. Submission Process
-- **Enhanced Button Detection**:
-  - Priority-ordered selector list
-  - Most specific selectors first (`.row.pt-5 .col-12 button.btn.btn-success`)
-  - Generic selectors as fallbacks
-  - Visibility and enabled state validation
+### 5. Verification
 
-- **Multiple Click Strategies**:
-  - Standard Puppeteer click
-  - JavaScript-based click as fallback
-  - Event dispatching for stubborn elements
-  - Focus and Enter key press
+After a short settle delay, the page is polled (default every 500ms up to 20s, configurable via
+`defaults.verifySettleMs` / `verifyPollIntervalMs` / `verifyTimeoutMs`) and stops at the first
+terminal signal.
 
-- **Post-Submission Handling**:
-  - Modal dialog detection and interaction
-  - Loading indicator monitoring
-  - Success/error message detection
-  - Page content analysis for confirmation
+Polling matters because the confirmation banner is a transient toast. Sampling once at a fixed
+offset is wrong in both directions: it can catch a toast that should be ignored, and it can miss a
+redirect that lands moments later.
 
-### 5. Verification and Cleanup
-- **Success/Failure Determination**: 
-  - Success is confirmed if the page URL is exactly `https://parkhurst.skedda.com/booking` after submission attempts.
-  - Failure is determined if the URL does not match the success URL, or if specific error messages (e.g., from `.alert-danger`, `.error-message`) are detected on the page.
-- **Error Logging**: 
-  - Detailed error messages, including the current URL and page title at the time of failure, are logged to `booking_errors.log` in the project's root directory.
-- **Browser Cleanup**: Puppeteer browser instance is closed.
-- **Process Logging**: Detailed operational logs are maintained throughout the booking process via the `log` utility.
+Checks, in order:
+
+1. **Failure** if a visible alert matches a known failure keyword, or is rendered in a
+   danger-styled element.
+2. **Success** if a confirmation banner is visible ("Too easy - your booking is confirmed.").
+3. **Success** if the URL is the base booking URL with the `nb*` parameters gone.
+4. **Failure** on timeout, listing every alert seen across all polls.
+
+The confirmation banner and failure banners share the same `[role="alert"]` markup, so an
+*unrecognised* alert is never treated as a failure on its own — check 3 decides. A recognised
+confirmation is never treated as a failure even inside a danger-styled wrapper.
+
+**Quota rejections are real failures.** "This booking cannot be confirmed because it would mean
+that your quota is exceeded…" means the per-person daily hour limit across the tennis and
+basketball spaces is already used up for that date, so the booking genuinely did not happen. It is
+reported as a failure, and the fallback list does not treat it specially.
+
+### 6. Cleanup
+- The browser is closed in a `finally` block
+- Errors, including current URL and page title, are logged to `booking_errors.log`
+
+## Facility Fallback and Retry
+
+`--facility` accepts a comma-separated list. Each is attempted in order and the loop stops at the
+first success, so a fallback court is only attempted when the preceding one genuinely failed.
+
+Each facility gets **one retry**, but only for errors raised *before* the Confirm click — those
+lacking `bookingErrorMessage`. Every error from `createBookingError` carries that field, covering
+everything after submission including the verification timeout, so a retry can never duplicate a
+booking that may already exist.
 
 ## Configuration Schema
 
 ```json
 {
-  "credentials": {
-    "email": "user@example.com",
-    "password": "password123"
-  },
   "defaults": {
     "signature": "ZZ",
     "bufferMinutes": 15,
     "headless": true,
-    "timeout": 30000
+    "bookInAdvanceDays": 14,
+    "timeout": 30000,
+    "verifySettleMs": 2000,
+    "verifyPollIntervalMs": 500,
+    "verifyTimeoutMs": 20000
   },
   "facilities": {
-    "tennis_lower": {
-      "spaceId": "1244466",
-      "name": "Tennis - Lower Court Whole"
-    },
-    "tennis_upper": {
-      "spaceId": "1244467",
-      "name": "Tennis - Upper Court Whole"
-    }
+    "tennis_lower": { "spaceId": "1244466", "name": "Tennis - Lower Court Whole" },
+    "tennis_upper": { "spaceId": "1244467", "name": "Tennis - Upper Court Whole" }
   },
   "urls": {
     "baseUrl": "https://parkhurst.skedda.com/booking",
@@ -170,197 +172,76 @@ https://parkhurst.skedda.com/booking?nbend=2025-06-15T13%3A00%3A00&nbspaces=1244
 }
 ```
 
+Tasks explicitly select a two-field email/password file with `--credentials`.
+Shared configuration contains only booking settings. The project does not load
+an environment file or infer an account from environment variables. `list` and
+configuration-only `validate` work without credentials; booking requires a login.
+
 ## CLI Command Structure
 
-### Main Commands
+### `book`
 
-#### `book` - Primary booking command
-**Required Parameters:**
-**Required Parameters:**
-- `--facility <facility_ids>`: Facility ID from configuration (e.g., tennis_lower). Accepts comma-separated values (e.g., `tennis_lower,tennis_upper`) for automatic fallback if the primary facility fails.
-- `--date <date>`: Specifies the booking date in YYYY-MM-DD format. This is mutually exclusive with `--book-in-advance`.
-- `--book-in-advance [days]`: An optional integer specifying how many days in the future the booking should be made. For example, `14` means 14 days from the current date. If this option is provided without a value, it defaults to 14 days. If `--date` is provided, this option should not be used. If neither `--date` nor `--book-in-advance` is specified, the script will use the default number of days specified in `config.json` (`defaults.bookInAdvanceDays`); if this is not set in the config, it defaults to 14 days in advance.
-- `--start-time <time>`: Start time (HH:MM)
-- `--end-time <time>`: End time (HH:MM)
+**Required:**
+- `--facility <facility_ids>`: facility key(s) from config; comma-separated enables fallback
+- `--start-time <time>` / `--end-time <time>`: HH:MM
 
-**Optional Parameters:**
-- `--notify-email <email>`: Overrides the default notification recipient (`SMTP_TO`) for this specific execution. Essential for sending alerts to different users for different bookings.
-- `--profile <email_or_name>`: User profile for credentials (email or name from config)
-- `--signature <signature>`: Custom signature (overrides config default)
-- `--title <title>`: Custom booking title (overrides auto-generation)
-- `--headless <boolean>`: Run in headless mode (default: true)
-- `--config <path>`: Custom config file path
-- `--force-date`: Allow booking dates in the past (for testing or specific scenarios)
+**Date selection** (optional; defaults to `defaults.bookInAdvanceDays`, or 14):
+- `--date <date>`: YYYY-MM-DD. Mutually exclusive with `--book-in-advance`.
+- `--book-in-advance [days]`: days ahead of today.
 
+**Optional:**
+- `--notify-email <email>`: overrides `SMTP_TO` for this run; comma-separated for several recipients
+- `--credentials <path>`: private JSON containing only email and password
+- `--email <email>` and `--password <password>`: optional direct login pair (mutually exclusive with `--credentials`)
+- `--signature <signature>` / `--title <title>`: override config defaults
+- `--headless <boolean>`: default true
+- `--config <path>`: custom config file
+- `--force-date`: allow dates in the past
 
-#### `list` - Facility listing
-- Displays all configured facilities
-- Shows facility names and space IDs
-- Validates configuration before listing
+### `list` / `validate` / `examples`
+List configured facilities, validate the config file, and print usage examples.
 
-#### `validate` - Configuration validation
-- Checks configuration file structure
-- Validates required fields and formats
-- Reports configuration status
+## Error Handling
 
-#### `examples` - Usage examples
-- Shows common usage patterns
-- Provides copy-paste ready commands
-- Includes debugging tips
-
-### Usage Examples
-```bash
-# Basic booking
-node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00
-
-# With custom signature
-node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --signature "JD"
-
-# Debug mode (visible browser)
-node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --headless false
-
-# Custom title
-node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --title "Tennis Practice"
-
-# Book in advance (defaults to 14 days)
-node index.js book --facility tennis_lower --book-in-advance --start-time 12:00 --end-time 13:00
-
-# Book in advance with specific days
-node index.js book --facility tennis_lower --book-in-advance 10 --start-time 12:00 --end-time 13:00
-```
-
-## Error Handling Strategy
-
-### 1. Input Validation
-- Date (`YYYY-MM-DD`): Can be directly provided or calculated based on `--book-in-advance`.
-- Time format validation (HH:MM)
-- Time range validation (start before end)
-The `date` parameter (whether provided directly or calculated) is validated for the correct `YYYY-MM-DD` format. It's also checked to ensure it's not a past date, unless `--force-date` is used.
-- Facility existence validation
-
-### 2. Network and Browser Issues
-- Browser launch failure handling
-- Page load timeout management
-- Network connectivity issues
-- Element detection timeouts
-
-### 3. Authentication Issues
-- Login form detection
-- Credential validation
-- Authentication failure detection
-- Session management
-
-### 4. Booking Process Issues
-- Form field detection failures
-- Button click failures
-- Modal dialog handling
-- **Success/Failure Determination**: Verification is primarily based on the final URL. A successful booking redirects to the base booking URL (`https://parkhurst.skedda.com/booking`) without any query parameters. If the URL contains query parameters or if specific error messages are found on the page, the booking is considered failed. All errors are logged to `booking_errors.log`.
-
-### 5. Recovery Mechanisms
-- Multiple selector strategies
-- Fallback click methods
-- Comprehensive error logging for debugging
-- Detailed error logging
-- Graceful browser cleanup
+1. **Input validation** — date format and not-in-the-past (unless `--force-date`), time format and
+   ordering, facility existence.
+2. **Infrastructure failures** — browser launch, navigation timeouts, element detection. These
+   occur before submission and are retried once.
+3. **Booking rejections** — quota exceeded, conflicts, and other site-reported errors. Final; never
+   retried.
+4. **Logging** — every run appends to `booking_errors.log` with timestamps. Set
+   `BOOKING_DISABLE_FILE_LOG=1` to suppress file logging (used by the tests so fixture output does
+   not read like real booking activity).
 
 ## Security Considerations
 
-### 1. Credential Management
-- Environment variable support for production
-- Configuration file exclusion from version control
-- No credential logging or exposure
-- Secure credential validation
-
-### 2. Input Sanitization
-- All user inputs validated before processing
-- SQL injection prevention (though not applicable here)
-- XSS prevention in form inputs
-- Path traversal prevention for config files
-
-### 3. Browser Security
-- Sandboxed browser execution
-- No persistent browser data
-- Minimal browser permissions
-- Secure browser argument configuration
-
-### 4. Rate Limiting
-- Configurable delays between actions
-- Respectful automation practices
-- Timeout management to prevent hanging
-
-## Performance Optimizations
-
-### 1. Browser Management
-- Efficient browser lifecycle management
-- Minimal resource usage
-- Proper cleanup procedures
-- Optimized viewport settings
-
-### 2. Selector Strategies
-- Priority-ordered selector lists
-- Efficient element detection
-- Minimal DOM queries
-- Smart waiting strategies
-
-### 3. Network Optimization
-- Efficient page loading strategies
-- Minimal network requests
-- Optimized navigation patterns
+- Credentials live only in the selected `config/users/*.json` file, excluded from version control and owner-readable on the NAS
+- Credentials are never written to logs or notifications
+- Chromium runs with `--no-sandbox` in Docker, which is required for the container runtime; the
+  browser loads only the booking site and keeps no persistent profile
 
 ## Dependencies
 
-### Core Dependencies
-- **puppeteer**: Web automation and browser control
-- **commander**: CLI argument parsing and command structure
-- **moment**: Date/time manipulation and formatting
-- **chalk**: Colored console output for better UX
-- **dotenv**: Environment variable loading
+- **puppeteer**: browser automation
+- **commander**: CLI argument parsing
+- **moment**: date/time formatting and validation
+- **chalk**: coloured console output (optional at runtime; a no-op proxy is used if unavailable)
 
-### Development Dependencies
-- **nodemon**: Development server with auto-restart
+## Testing
 
-## Testing Strategy
+`npm test` runs:
 
-### Manual Testing
-- Debug mode for visual verification
-- Detailed error logging for issue diagnosis
-- Comprehensive logging for troubleshooting
-- Multiple environment testing
+- `test/booking.test.js` — pure functions: completed-URL detection and alert classification,
+  including the confirmation-vs-quota cases taken verbatim from production logs
+- `test/verify.test.js` — the verification loop against a stubbed page: late-appearing toast, late
+  redirect, confirmation inside a danger wrapper, quota rejection, timeout reporting, and the
+  retryable/non-retryable error contract
+- `node index.js validate` and `node index.js list` as a config smoke test
 
-### Automated Testing Considerations
-- Unit tests for utility functions
-- Integration tests for booking workflow
-- Configuration validation tests
-- Error handling verification
+## Possible Future Work
 
-## Future Enhancements
+- Check existing bookings before attempting, to skip work that would hit the quota
+- Direct API calls if Skedda exposes them, removing the browser dependency
+- Log rotation for `booking_errors.log`
 
-### Potential Improvements
-1. **Scheduling**: Cron job integration for recurring bookings
-2. **Notifications**: Email/SMS confirmation of successful bookings
-3. **Multi-facility**: Batch booking for multiple facilities
-4. **Conflict Detection**: Check for existing bookings before attempting
-5. **Retry Logic**: Automatic retry on transient failures
-6. **API Integration**: Direct API calls if Skedda provides them
-7. **GUI Interface**: Web-based interface for non-technical users
-
-### Scalability Considerations
-- Multiple venue support
-- User management system
-- Booking history tracking
-- Performance monitoring
-- Load balancing for high usage
-
-## Maintenance
-
-### Regular Tasks
-- Dependency updates
-- Security patch application
-- Configuration validation
-- Log file management
-
-### Monitoring
-- Success/failure rate tracking
-- Performance metrics
-- Error pattern analysis
-- User feedback integration
+Direct `--email` and `--password` must both be nonempty; no partial fallback to other accounts is allowed. The `validate` command supports the same pair without making network requests.

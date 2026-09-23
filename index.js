@@ -1,11 +1,28 @@
 #!/usr/bin/env node
 
 const { Command } = require('commander');
-const chalk = require('chalk');
 const path = require('path');
 const { loadConfig, validateConfig, getFacility, listFacilities } = require('./src/config');
-const { isValidDate, isValidTime, isValidTimeRange, isValidBookingDate, log, formatBookingTitle } = require('./src/utils');
-const BookingAutomator = require('./src/booking');
+const { isValidDate, isValidTime, isValidTimeRange, log, formatBookingTitle, delay } = require('./src/utils');
+
+function loadChalk() {
+  try {
+    const chalkModule = require('chalk');
+    const chalk = chalkModule.default || chalkModule;
+
+    if (chalk && typeof chalk.red === 'function') {
+      return chalk;
+    }
+  } catch (error) {
+    // Color output is optional; continue without it if Chalk is unavailable.
+  }
+
+  return new Proxy({}, {
+    get: () => (message) => String(message)
+  });
+}
+
+const chalk = loadChalk();
 
 // Load Qinglong notification module lazily to allow env var overrides
 let sendNotify = null;
@@ -44,7 +61,9 @@ program
   .option('--book-in-advance [days]', 'Number of days in advance to book (e.g., 14 for 14 days from today). If no value is provided, defaults to value in config or 14. Mutually exclusive with --date.')
   .requiredOption('--start-time <time>', 'Start time (HH:MM)')
   .requiredOption('--end-time <time>', 'End time (HH:MM)')
-  .option('--profile <email_or_name>', 'User profile for credentials (email or name from config)')
+  .option('--credentials <path>', 'JSON file containing only email and password')
+  .option('--email <email>', 'Login email (use together with --password)')
+  .option('--password <password>', 'Login password (use together with --email)')
   .option('--signature <signature>', 'Custom signature (overrides config)')
   .option('--title <title>', 'Custom booking title (overrides auto-generation)')
   .option('--notify-email <email>', 'Custom notification recipient email (overrides Qinglong env)')
@@ -69,9 +88,10 @@ program
       // Send error notification if Qinglong notification is available
       if (sendNotify) {
         try {
+          const bookingErrorMessage = error.bookingErrorMessage || error.message;
           await sendNotify(
             '🎾 Parkhurst Booking Failed',
-            `❌ Booking attempt failed\n\nError: ${error.message}\n\nTimestamp: ${new Date().toLocaleString()}`
+            `❌ Booking attempt failed\n\nError: ${bookingErrorMessage}\n\nTimestamp: ${new Date().toLocaleString()}`
           );
         } catch (notifyError) {
           console.error(chalk.yellow(`Warning: Failed to send notification: ${notifyError.message}`));
@@ -89,7 +109,7 @@ program
   .action(async (options) => {
     try {
       const config = loadConfig(options.config);
-      validateConfig(config);
+      validateConfig(config, { requireCredentials: false });
 
       const facilities = listFacilities(config);
 
@@ -111,15 +131,18 @@ program
 
 program
   .command('validate')
-  .description('Validate configuration file')
+  .description('Validate configuration and credentials locally (no login or booking)')
   .option('--config <path>', 'Custom config file path')
+  .option('--credentials <path>', 'JSON file containing only email and password')
+  .option('--email <email>', 'Login email (use together with --password)')
+  .option('--password <password>', 'Login password (use together with --email)')
   .action(async (options) => {
     try {
-      const config = loadConfig(options.config);
-      validateConfig(config);
+      const config = loadConfig(options.config, options);
+      validateConfig(config, { requireCredentials: Boolean(options.credentials || options.email !== undefined || options.password !== undefined) });
 
       console.log(chalk.green('✅ Configuration is valid!'));
-      console.log(chalk.blue(`📧 Email: ${config.credentials.email}`));
+      if (config.credentials) console.log(chalk.blue(`📧 Email: ${config.credentials.email}`));
       console.log(chalk.blue(`🏢 Facilities: ${Object.keys(config.facilities).length}`));
 
     } catch (error) {
@@ -136,25 +159,25 @@ program
     console.log(chalk.gray('─'.repeat(50)));
 
     console.log(chalk.yellow('\n1. Basic booking:'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00'));
+    console.log(chalk.white('   node index.js book --credentials "config/users/eric.json" --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00'));
 
-    console.log(chalk.yellow('\n2. Book with different profile (email):'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "john.doe@example.com"'));
+    console.log(chalk.yellow('\n2. Book with another user:'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --credentials "config/users/john.json"'));
 
     console.log(chalk.yellow('\n3. Book with custom signature:'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --signature "JD"'));
+    console.log(chalk.white('   node index.js book --credentials "config/users/eric.json" --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --signature "JD"'));
 
-    console.log(chalk.yellow('\n4. Book with profile and signature:'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --profile "jane.smith@example.com" --signature "JS"'));
+    console.log(chalk.yellow('\n4. Book with another user and signature:'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --credentials "config/users/jane.json" --signature "JS"'));
 
     console.log(chalk.yellow('\n5. Book with custom title:'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --title "Tennis Practice"'));
+    console.log(chalk.white('   node index.js book --credentials "config/users/eric.json" --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --title "Tennis Practice"'));
 
     console.log(chalk.yellow('\n6. Complete example with all parameters:'));
-    console.log(chalk.white('   node index.js book --facility tennis_upper --date 2025-06-15 --start-time 14:00 --end-time 16:00 --profile "jane.smith@company.org" --signature "JS" --title "Tournament Practice"'));
+    console.log(chalk.white('   node index.js book --facility tennis_upper --date 2025-06-15 --start-time 14:00 --end-time 16:00 --credentials "config/users/jane.json" --signature "JS" --title "Tournament Practice"'));
 
     console.log(chalk.yellow('\n7. Run in non-headless mode (for debugging):'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --headless false'));
+    console.log(chalk.white('   node index.js book --credentials "config/users/eric.json" --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --headless false'));
 
     console.log(chalk.yellow('\n8. List available facilities:'));
     console.log(chalk.white('   node index.js list'));
@@ -163,34 +186,33 @@ program
     console.log(chalk.white('   node index.js validate'));
 
     console.log(chalk.yellow('\n10. Book in advance (using default days from config):'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --book-in-advance --start-time 12:00 --end-time 13:00'));
+    console.log(chalk.white('   node index.js book --credentials "config/users/eric.json" --facility tennis_lower --book-in-advance --start-time 12:00 --end-time 13:00'));
 
     console.log(chalk.yellow('\n11. Book specific days in advance:'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --book-in-advance 10 --start-time 12:00 --end-time 13:00'));
+    console.log(chalk.white('   node index.js book --credentials "config/users/eric.json" --facility tennis_lower --book-in-advance 10 --start-time 12:00 --end-time 13:00'));
 
     console.log(chalk.yellow('\n12. Book with custom notification recipient:'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --notify-email "user@example.com"'));
+    console.log(chalk.white('   node index.js book --credentials "config/users/eric.json" --facility tennis_lower --date 2025-06-15 --start-time 12:00 --end-time 13:00 --notify-email "user@example.com"'));
 
-    console.log(chalk.yellow('\n📋 Profile and Signature Examples:'));
-    console.log(chalk.white('   # Use a specific profile (requires PROFILE_JOHN_DOE_EXAMPLE_COM_PASSWORD in .env)'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --profile "john.doe@example.com"'));
-    console.log(chalk.white('   # Override signature for any profile'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --signature "JS"'));
-    console.log(chalk.white('   # Use profile with signature override'));
-    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --profile "jane.smith@company.org" --signature "JS"'));
+    console.log(chalk.yellow('\n📋 Email, Password and Signature Examples:'));
+    console.log(chalk.white('   # Store only email and password in the selected credentials file'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --credentials "config/users/john.json"'));
+    console.log(chalk.white('   # Optional signature override'));
+    console.log(chalk.white('   node index.js book --credentials "config/users/eric.json" --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --signature "JS"'));
+    console.log(chalk.white('   # Use credentials with an optional signature override'));
+    console.log(chalk.white('   node index.js book --facility tennis_lower --date 2025-06-15 --start-time 14:00 --end-time 15:00 --credentials "config/users/jane.json" --signature "JS"'));
 
     console.log(chalk.blue('\n💡 Tips:'));
     console.log(chalk.gray('   • Use --headless false for debugging'));
     console.log(chalk.gray('   • Check available facilities with: node index.js list'));
-    console.log(chalk.gray('   • Set up multiple profiles in .env: PROFILE_EMAIL_DOMAIN_COM_PASSWORD=password'));
-    console.log(chalk.gray('   • Use --profile to specify a different email address'));
+    console.log(chalk.gray('   • Each credentials file contains only email and password'));
+    console.log(chalk.gray('   • Check credentials locally with: node index.js validate --credentials config/users/user.json'));
     console.log(chalk.gray('   • Use --signature to override the default signature'));
-    console.log(chalk.gray('   • Profile signatures can be set with PROFILE_EMAIL_DOMAIN_COM_SIGNATURE=name'));
     console.log(chalk.gray('   • Booking title format: {start-15min} - {end+15min}'));
     console.log();
   });
 
-function validateBookingParams(options, forceDate = false, config) {
+function validateBookingParams(options, config) {
   const errors = [];
 
   // Date validation (format, past date) is now handled in executeBooking before this function is called.
@@ -232,7 +254,7 @@ function validateBookingParams(options, forceDate = false, config) {
 }
 
 async function executeBooking(options) {
-  const config = loadConfig(options.config, options.profile);
+  const config = loadConfig(options.config, options);
   validateConfig(config);
 
   let bookingDateStr;
@@ -301,19 +323,11 @@ async function executeBooking(options) {
 
   // The rest of executeBooking continues from here, using options.date (which is now bookingDateStr)
   // and config (which is already loaded).
-  // Validate email format if profile is provided
-  if (options.profile) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(options.profile)) {
-      throw new Error('Invalid email format for profile');
-    }
-  }
-
   // Basic parameter validation (facility, times) - date is validated above.
-  validateBookingParams(options, options.forceDate, config); // Pass config for facility check
+  validateBookingParams(options, config); // Pass config for facility check
 
 
-  // Override signature if provided (takes precedence over profile signature)
+  // Override the shared signature if explicitly provided
   if (options.signature) {
     config.defaults.signature = options.signature;
   }
@@ -325,7 +339,8 @@ async function executeBooking(options) {
   for (const key of facilityKeys) {
     const fac = getFacility(config, key);
     if (fac) {
-      facilitiesToTry.push(fac);
+      // getFacility returns the raw config entry, which has no key of its own.
+      facilitiesToTry.push({ ...fac, key });
     }
     // getFacility throws if not found, so we don't need else here unless we change getFacility behavior
   }
@@ -350,23 +365,53 @@ async function executeBooking(options) {
   // Try each facility in order
   let success = false;
   let lastError = null;
+  const attemptErrors = [];
+  const BookingAutomator = require('./src/booking');
+
+  // A booking rejection from the site is final, but an infrastructure failure
+  // (browser crash, network blip, form not loaded) is worth one more try.
+  const RETRY_BACKOFF_MS = 3000;
+
+  // Only errors raised before the Confirm click can be retried safely. Every
+  // error from createBookingError carries bookingErrorMessage, which covers
+  // everything after submission - including the verification timeout - so a
+  // retry can never duplicate a booking that may already exist.
+  const isRetryable = (error) => !error.bookingErrorMessage;
 
   for (let i = 0; i < facilitiesToTry.length; i++) {
     const facility = facilitiesToTry[i];
     console.log(chalk.yellow(`\n👉 Attempt ${i + 1}/${facilitiesToTry.length}: Booking ${facility.name} (${facility.key})...`));
 
-    const automator = new BookingAutomator(config);
-
     try {
-      await automator.book({
-        facility,
-        date: options.date,
-        startTime: options.startTime,
-        endTime: options.endTime,
-        signature: config.defaults.signature,
-        customTitle: options.title,
-        headless
-      });
+      let attempt = 0;
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        // Fresh automator (and browser) per try.
+        const automator = new BookingAutomator(config);
+
+        try {
+          await automator.book({
+            facility,
+            date: options.date,
+            startTime: options.startTime,
+            endTime: options.endTime,
+            signature: config.defaults.signature,
+            customTitle: options.title,
+            headless
+          });
+          break;
+        } catch (error) {
+          if (attempt >= 1 || !isRetryable(error)) {
+            throw error;
+          }
+
+          attempt++;
+          console.log(chalk.blue(`⏳ Pre-submit failure (${error.message}); retrying ${facility.name} in ${RETRY_BACKOFF_MS / 1000}s...`));
+          log(`Retrying ${facility.name} after pre-submit failure: ${error.message}`);
+          await delay(RETRY_BACKOFF_MS);
+        }
+      }
 
       console.log(chalk.green(`\n✅ Successfully booked: ${facility.name}`));
       success = true;
@@ -398,6 +443,11 @@ async function executeBooking(options) {
     } catch (error) {
       console.error(chalk.red(`❌ Attempt failed for ${facility.name}: ${error.message}`));
       lastError = error;
+      attemptErrors.push({
+        facilityName: facility.name,
+        message: error.bookingErrorMessage || error.message,
+        currentUrl: error.currentUrl || null
+      });
 
       if (i < facilitiesToTry.length - 1) {
         console.log(chalk.blue(`⏳ Retrying with next facility in fallback list...`));
@@ -415,9 +465,16 @@ async function executeBooking(options) {
     // Using the last error message as context
     if (sendNotify) {
       try {
+        const detailedErrors = attemptErrors.length > 0
+          ? attemptErrors.map((attempt, index) => {
+            const urlLine = attempt.currentUrl ? `\n  URL: ${attempt.currentUrl}` : '';
+            return `${index + 1}. ${attempt.facilityName}: ${attempt.message}${urlLine}`;
+          }).join('\n')
+          : `Last Error: ${lastError ? (lastError.bookingErrorMessage || lastError.message) : 'Unknown error'}`;
+
         await sendNotify(
           '🎾 Parkhurst Booking Failed',
-          `❌ All booking attempts failed\n\nTarget(s): ${facilitiesToTry.map(f => f.name).join(', ')}\nLast Error: ${lastError ? lastError.message : 'Unknown error'}\n\nTimestamp: ${new Date().toLocaleString()}`
+          `❌ All booking attempts failed\n\nTarget(s): ${facilitiesToTry.map(f => f.name).join(', ')}\n\nError Details:\n${detailedErrors}\n\nTimestamp: ${new Date().toLocaleString()}`
         );
       } catch (notifyError) {
         console.error(chalk.yellow(`Warning: Failed to send notification: ${notifyError.message}`));

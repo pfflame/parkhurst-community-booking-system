@@ -170,3 +170,6 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Local two-field account files
+config/users/

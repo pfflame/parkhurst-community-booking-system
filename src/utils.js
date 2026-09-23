@@ -51,15 +51,6 @@ function isValidTimeRange(startTime, endTime) {
 }
 
 /**
- * Validates booking date (not in the past)
- */
-function isValidBookingDate(date) {
-  const bookingDate = moment(date, 'YYYY-MM-DD');
-  const today = moment().startOf('day');
-  return bookingDate.isSameOrAfter(today);
-}
-
-/**
  * Adds delay for timing control
  */
 function delay(ms) {
@@ -84,7 +75,12 @@ function log(message, level = 'info') {
       console.log(`${prefix} ${message}`);
   }
 
-  // Also log to file
+  // Also log to file, unless suppressed (tests, so runs are not polluted with
+  // fixture output that reads like real booking activity).
+  if (process.env.BOOKING_DISABLE_FILE_LOG === '1') {
+    return;
+  }
+
   const fs = require('fs');
   const path = require('path');
   const logFile = path.join(__dirname, '..', 'booking_errors.log');
@@ -99,12 +95,10 @@ function log(message, level = 'info') {
 
 module.exports = {
   formatBookingTitle,
-  timeToISO,
   generateBookingUrl,
   isValidDate,
   isValidTime,
   isValidTimeRange,
-  isValidBookingDate,
   delay,
   log
 };

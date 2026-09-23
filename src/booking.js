@@ -1,5 +1,11 @@
 const puppeteer = require('puppeteer');
 const { formatBookingTitle, generateBookingUrl, delay, log } = require('./utils');
+const { isBookingSuccessUrl } = require('./booking-url');
+const {
+  FATAL_ALERT_SCORE,
+  isBookingSuccessMessage,
+  rankBookingAlerts
+} = require('./booking-messages');
 
 const fs = require('fs');
 
@@ -99,14 +105,24 @@ class BookingAutomator {
       '.booking-title input'
     ];
 
+    let titleFilled = false;
+
     for (const selector of titleSelectors) {
       const element = await this.page.$(selector);
       if (element) {
         await element.click({ clickCount: 3 });
         await element.type(bookingTitle);
         log(`Booking title filled: ${bookingTitle}`);
+        titleFilled = true;
         break;
       }
+    }
+
+    // Fail before submitting rather than creating a booking with a blank title.
+    // A plain Error (no bookingErrorMessage) marks this as a pre-submit failure,
+    // which the caller may safely retry.
+    if (!titleFilled) {
+      throw new Error('Booking title field not found - the booking form markup may have changed');
     }
 
     const signatureSelectors = [
@@ -117,14 +133,23 @@ class BookingAutomator {
       '.signature input'
     ];
 
+    let signatureFilled = false;
+
     for (const selector of signatureSelectors) {
       const element = await this.page.$(selector);
       if (element) {
         await element.click({ clickCount: 3 });
         await element.type(signature);
         log(`Signature filled: ${signature}`);
+        signatureFilled = true;
         break;
       }
+    }
+
+    // Warn rather than throw: the signature field may legitimately be optional,
+    // and blocking every booking over it would be worse than submitting without.
+    if (!signatureFilled) {
+      log('Warning: signature field not found - submitting without a signature', 'warn');
     }
 
     await delay(1000);
@@ -244,119 +269,149 @@ class BookingAutomator {
     }
   }
 
-  async verifyBookingSuccess() {
-    log('Verifying booking success...');
-    // Wait for potential navigation or dynamic content loading after submission.
-    // The primary success indicator is redirection to the base booking URL without query parameters.
-    await delay(5000); // Wait for redirects or for error messages to appear.
+  createBookingError(message, currentUrl = null, pageTitle = null) {
+    const error = new Error(message);
+    error.bookingErrorMessage = message;
+    error.currentUrl = currentUrl;
+    error.pageTitle = pageTitle;
+    return error;
+  }
 
-    const targetSuccessUrl = 'https://parkhurst.skedda.com/booking';
-    const currentUrl = this.page.url();
-
-    // Check 1: Exact URL match for success.
-    // If the current URL is exactly the target success URL, the booking was successful.
-    if (currentUrl === targetSuccessUrl) {
-      log(`Success: Navigated to the target success URL: ${currentUrl}`);
-      return true;
-    }
-
-    // If not redirected to the exact success URL, it's considered a failure or an error state.
-    // Log this intermediate state before checking for specific error messages.
-    log(`URL check failed: Not redirected to exact success URL. Current URL: ${currentUrl}. Proceeding to check for error messages.`);
-
-    // Check 2: Look for specific error messages on the page.
-    const errorSelectors = [
-      '.alert-danger',      // Bootstrap danger alert
-      '.error-message',     // Common class for error messages
-      '.booking-error',     // Custom or specific booking error class
-      '[class*="error"]',   // Elements with 'error' in their class name
-      '.alert',             // General alert (could be info/warning, but check content)
-      '[role="alert"]'      // ARIA role for alerts
+  async extractPageAlerts() {
+    // Collect every visible alert, not just the danger-styled ones: the
+    // confirmation banner shares the same [role="alert"] markup and is needed as
+    // positive evidence. Each alert is tagged so it can be classified later.
+    const alertSelectors = [
+      '.alert',
+      '[role="alert"]',
+      '.booking-error',
+      '.error-message',
+      '.invalid-feedback',
+      '[class*="error"]'
     ];
 
-    const foundErrors = [];
+    const dangerSelector = '.alert-danger, .booking-error, .error-message, .invalid-feedback, [class*="error"]';
+    const nonDangerSelector = '.alert-success, .alert-info';
 
-    for (const selector of errorSelectors) {
-      const elements = await this.page.$$(selector);
-      for (const element of elements) {
-        try {
-          const isVisible = await element.isIntersectingViewport();
-          if (isVisible) {
-            const text = await element.evaluate(el => el.textContent.trim());
-            if (text && text.length > 0) {
-              foundErrors.push(text);
-            }
-          }
-        } catch (err) {
-          log(`Error while checking selector ${selector} for error messages: ${err.message}`, 'warn');
+    return this.page.evaluate((selectors, dangerMatch, nonDangerMatch) => {
+      const normalizeText = (text) => text.replace(/\s+/g, ' ').trim();
+      const isVisible = (element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+
+        return style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          style.opacity !== '0' &&
+          rect.width > 0 &&
+          rect.height > 0;
+      };
+
+      const alerts = [];
+      const seen = new Set();
+
+      for (const selector of selectors) {
+        for (const element of document.querySelectorAll(selector)) {
+          if (!isVisible(element)) continue;
+
+          const text = normalizeText(element.innerText || element.textContent || '');
+          if (!text || seen.has(text)) continue;
+
+          seen.add(text);
+          alerts.push({
+            text,
+            isDanger: element.matches(dangerMatch) && !element.matches(nonDangerMatch)
+          });
         }
       }
+
+      return alerts;
+    }, alertSelectors, dangerSelector, nonDangerSelector);
+  }
+
+  async verifyBookingSuccess() {
+    log('Verifying booking success...');
+
+    // The confirmation banner is a transient toast: sampling the page once at a
+    // fixed offset can either catch a toast that has not yet cleared or miss a
+    // redirect that lands a moment later. Poll instead, and stop at the first
+    // terminal signal. The primary success indicator is redirection to the
+    // booking path without the new-booking query parameters. Skedda may migrate
+    // the tenant to a new hostname (for example, skedda.com -> allbooked.com),
+    // so do not require an exact hostname match here.
+    const defaults = this.config.defaults || {};
+    const settleMs = defaults.verifySettleMs ?? 2000;
+    const pollIntervalMs = defaults.verifyPollIntervalMs ?? 500;
+    const timeoutMs = defaults.verifyTimeoutMs ?? 20000;
+
+    const targetSuccessUrl = this.config.urls.baseUrl;
+
+    // Let the click be processed before judging the page, so an alert that was
+    // already on the form is not mistaken for a response to this submission.
+    await delay(settleMs);
+
+    const deadline = Date.now() + timeoutMs;
+    const seenAlertTexts = [];
+    let currentUrl = this.page.url();
+    let pageTitle = await this.page.title();
+
+    while (true) {
+      currentUrl = this.page.url();
+      pageTitle = await this.page.title();
+
+      const foundAlerts = await this.extractPageAlerts();
+
+      // Toasts disappear between polls, so remember everything seen for the
+      // failure message rather than only what is visible at the end.
+      for (const alert of foundAlerts) {
+        if (!seenAlertTexts.includes(alert.text)) {
+          seenAlertTexts.push(alert.text);
+        }
+      }
+
+      // Check 1: A recognised failure always takes precedence over URL-based
+      // success. An unrecognised banner scores below the threshold and is left
+      // to the checks below rather than failing the booking on its own.
+      const { bestCandidate, highestScore } = rankBookingAlerts(foundAlerts);
+      if (bestCandidate && highestScore >= FATAL_ALERT_SCORE) {
+        log(`Booking failed. Detected webpage error message: "${bestCandidate}"`);
+        throw this.createBookingError(bestCandidate, currentUrl, pageTitle);
+      }
+
+      // Check 2: Skedda confirms with a banner reading
+      // "Too easy - your booking is confirmed." That is definitive success.
+      const successMessage = foundAlerts.map(alert => alert.text).find(isBookingSuccessMessage);
+      if (successMessage) {
+        log(`Success evidence: confirmation message: "${successMessage}"`);
+        log(`Success evidence: page title: "${pageTitle}"`);
+        return true;
+      }
+
+      // Check 3: The booking form parameters disappear after a successful
+      // submit and the browser is on the expected tenant.
+      if (isBookingSuccessUrl(targetSuccessUrl, currentUrl)) {
+        log(`Success evidence: completed booking URL: ${currentUrl}`);
+        log(`Success evidence: page title: "${pageTitle}"`);
+        log('Success evidence: no critical booking error is visible');
+        return true;
+      }
+
+      if (Date.now() >= deadline) break;
+
+      await delay(pollIntervalMs);
     }
 
-    if (foundErrors.length > 0) {
-      // Prioritize identifying the "real" error over informational messages.
-      // High priority keywords indicating a hard failure or refusal.
-      const highPriorityKeywords = [
-        'cannot', "can't", "couldn't",
-        'quota', 'exceeded',
-        'failed', 'error',
-        'confirmed because', // "This booking cannot be confirmed because..."
-        'not allowed',
-        'conflict'
-      ];
+    // Check 4: No confirmation, no recognised error, and never reached the
+    // success URL within the timeout.
+    log(`URL check did not indicate success within ${timeoutMs}ms. Current URL: ${currentUrl}.`);
 
-      // Low priority/informational keywords to possibly ignore if they are the only thing found
-      const lowPriorityKeywords = [
-        'verified', 'residents', 'info', 'note'
-      ];
-
-      // Find the "worst" error
-      let bestCandidate = null;
-      let highestScore = -1;
-
-      for (const errorText of foundErrors) {
-        const lowerText = errorText.toLowerCase();
-        let score = 0;
-
-        // Check high priority keywords
-        if (highPriorityKeywords.some(kw => lowerText.includes(kw))) {
-          score = 10;
-        }
-        // Check if it looks like the generic info banner
-        else if (lowPriorityKeywords.some(kw => lowerText.includes(kw))) {
-          score = 1;
-        } else {
-          score = 5; // Unknown alert, assume it might be important
-        }
-
-        if (score > highestScore) {
-          highestScore = score;
-          bestCandidate = errorText;
-        }
-      }
-
-      // If the highest score is low (meaning we only found info banners), 
-      // check if we are still on the booking page. 
-      // If we ARE still on the booking page (implied by this method being called),
-      // and we haven't seen a high priority error, but we DID find alerts...
-      // logic: if we found a verified resident banner, that doesn't mean failure by itself.
-      // But if we are stuck on this page and not redirected, something IS wrong.
-      // However, usually "Quota Exceeded" shows up.
-
-      if (bestCandidate && highestScore >= 5) {
-        const errorMessage = `Booking failed. Detected error message: "${bestCandidate}"`;
-        log(errorMessage);
-        throw new Error(errorMessage);
-      } else {
-        log(`Found informational alerts but no critical errors: ${foundErrors.join(' | ')}. Continuing checks...`);
-      }
+    if (seenAlertTexts.length > 0) {
+      log(`Found non-critical alerts but no confirmation: ${seenAlertTexts.join(' | ')}`);
     }
 
-    // Check 3: If no specific error message is found, but not on success URL, log current state as a generic failure.
-    const pageTitle = await this.page.title();
-    const genericFailureMessage = `Booking failed: Did not redirect to success URL (${targetSuccessUrl}) and no specific error messages were found. Current URL: ${currentUrl}, Page Title: "${pageTitle}"`;
+    const visibleAlerts = seenAlertTexts.length > 0 ? ` Alerts seen while waiting: ${seenAlertTexts.join(' | ')}.` : '';
+    const genericFailureMessage = `Booking failed: Did not reach a completed booking URL based on ${targetSuccessUrl} and no confirmation message was found within ${timeoutMs}ms.${visibleAlerts} Current URL: ${currentUrl}, Page Title: "${pageTitle}"`;
     log(genericFailureMessage);
-    throw new Error(genericFailureMessage);
+    throw this.createBookingError(genericFailureMessage, currentUrl, pageTitle);
   }
 
   async close() {

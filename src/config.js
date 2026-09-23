@@ -1,97 +1,58 @@
 const fs = require('fs');
 const path = require('path');
-// Load .env from the project root (one level up from src/)
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-
-/**
- * Loads profile credentials from environment variables
- */
-function loadProfileCredentials(profileEmail) {
-  // Look for profile-specific environment variables
-  const profileKey = profileEmail.replace(/[@.]/g, '_').toUpperCase();
-  const usernameKey = `PROFILE_${profileKey}_USERNAME`;
-  const passwordKey = `PROFILE_${profileKey}_PASSWORD`;
-  const signatureKey = `PROFILE_${profileKey}_SIGNATURE`;
-
-  const username = process.env[usernameKey];
-  const password = process.env[passwordKey];
-  const signature = process.env[signatureKey];
-
-  if (!username) {
-    throw new Error(`Username not found for profile ${profileEmail}. Expected environment variable: ${usernameKey}`);
+/** Load shared settings plus an explicitly selected login. */
+function loadConfig(configPath = null, options = {}) {
+  const finalConfigPath = configPath || path.join(__dirname, '..', 'config', 'config.json');
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(finalConfigPath, 'utf8'));
+  } catch (_) {
+    throw new Error('Cannot read config file; check its path and JSON format');
   }
-
-  if (!password) {
-    throw new Error(`Password not found for profile ${profileEmail}. Expected environment variable: ${passwordKey}`);
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error('Shared configuration must be a JSON object');
   }
-
-  return {
-    email: username,
-    password: password,
-    signature: signature || null
-  };
-}
-
-/**
- * Loads configuration from file or environment variables
- */
-function loadConfig(configPath = null, profileEmail = null) {
-  const defaultConfigPath = path.join(__dirname, '..', 'config', 'config.json');
-  const finalConfigPath = configPath || defaultConfigPath;
-
-  let config = {};
-
-  if (fs.existsSync(finalConfigPath)) {
+  // Logins belong only to the selected user, never to shared settings or env fallbacks.
+  delete config.credentials;
+  let credentials;
+  const hasDirect = options.email !== undefined || options.password !== undefined;
+  if (options.credentials) {
+    if (hasDirect) {
+      throw new Error('Use --credentials by itself, without --email or --password');
+    }
     try {
-      const configData = fs.readFileSync(finalConfigPath, 'utf8');
-      config = JSON.parse(configData);
-    } catch (error) {
-      throw new Error(`Failed to parse config file: ${error.message}`);
+      const filename = path.resolve(__dirname, '..', options.credentials);
+      credentials = JSON.parse(fs.readFileSync(filename, 'utf8'));
+    } catch (_) {
+      throw new Error('Cannot read credentials file; check its path and JSON format');
     }
-  } else {
-    throw new Error(`Config file not found: ${finalConfigPath}`);
+    if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials) ||
+        Object.keys(credentials).some(key => !['email', 'password'].includes(key))) {
+      throw new Error('Credentials file must contain only email and password');
+    }
+  } else if (hasDirect) {
+    credentials = { email: options.email, password: options.password };
   }
-
-  // If profile email is provided, load profile-specific credentials
-  if (profileEmail) {
-    const profileCredentials = loadProfileCredentials(profileEmail);
-    config.credentials.email = profileCredentials.email;
-    config.credentials.password = profileCredentials.password;
-    if (profileCredentials.signature) {
-      config.defaults.signature = profileCredentials.signature;
+  if (credentials) {
+    if (typeof credentials.email !== 'string' || !credentials.email.trim() ||
+        typeof credentials.password !== 'string' || !credentials.password) {
+      throw new Error('Provide both email and password; neither may be empty');
     }
-  } else {
-    // Override with default environment variables if available
-    if (process.env.BOOKING_EMAIL) {
-      config.credentials.email = process.env.BOOKING_EMAIL;
-    }
-
-    if (process.env.BOOKING_PASSWORD) {
-      config.credentials.password = process.env.BOOKING_PASSWORD;
-    }
-
-    if (process.env.BOOKING_SIGNATURE) {
-      config.defaults.signature = process.env.BOOKING_SIGNATURE;
-    }
+    config.credentials = { email: credentials.email.trim(), password: credentials.password };
   }
-
   return config;
 }
 
 /**
  * Validates configuration object
  */
-function validateConfig(config) {
+function validateConfig(config, { requireCredentials = true } = {}) {
   if (!config.defaults) {
     throw new Error('Missing defaults section in config');
   }
   if (config.defaults.bookInAdvanceDays !== undefined &&
     (typeof config.defaults.bookInAdvanceDays !== 'number' || config.defaults.bookInAdvanceDays < 0)) {
     throw new Error('config.defaults.bookInAdvanceDays must be a non-negative number if provided');
-  }
-
-  if (!config.credentials) {
-    throw new Error('Missing credentials section in config');
   }
 
   if (!config.facilities) {
@@ -102,17 +63,17 @@ function validateConfig(config) {
     throw new Error('Missing urls section in config');
   }
 
-  if (!config.credentials.email) {
-    throw new Error('Missing email in credentials');
-  }
-
-  if (!config.credentials.password) {
-    throw new Error('Missing password in credentials');
-  }
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(config.credentials.email)) {
-    throw new Error('Invalid email format in credentials');
+  if (requireCredentials) {
+    if (!config.credentials) {
+      throw new Error('Choose a user with --credentials config/users/NAME.json');
+    }
+    if (!config.credentials.email || !config.credentials.password) {
+      throw new Error('Provide both email and password; neither may be empty');
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(config.credentials.email)) {
+      throw new Error('Invalid email format in credentials');
+    }
   }
 
   if (!config.urls.baseUrl) {
@@ -157,42 +118,9 @@ function listFacilities(config) {
   }));
 }
 
-/**
- * Creates a sample config file
- */
-function createSampleConfig(outputPath) {
-  const sampleConfig = {
-    credentials: {
-      email: "your-email@example.com",
-      password: "your-password"
-    },
-    defaults: {
-      signature: "ZZ",
-      bufferMinutes: 15,
-      headless: true,
-      bookInAdvanceDays: 14, // Default days to book in advance
-      timeout: 30000
-    },
-    facilities: {
-      tennis_lower: {
-        spaceId: "1244466",
-        name: "Tennis - Lower Court Whole"
-      }
-    },
-    urls: {
-      baseUrl: "https://parkhurst.skedda.com/booking",
-      loginUrl: "https://parkhurst.skedda.com/login"
-    }
-  };
-
-  fs.writeFileSync(outputPath, JSON.stringify(sampleConfig, null, 2));
-}
-
 module.exports = {
   loadConfig,
-  loadProfileCredentials,
   validateConfig,
   getFacility,
-  listFacilities,
-  createSampleConfig
+  listFacilities
 };
